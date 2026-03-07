@@ -1,0 +1,72 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String   @unique
+  username  String?  @unique
+
+  firstName String?
+  lastName  String?
+  imageUrl  String?
+  hasImage  Boolean  @default(false)
+
+  banned    Boolean  @default(false)
+  locked    Boolean  @default(false)
+  
+  publicMetadata Json @default("{}")
+  unsafeMetadata Json @default("{}")
+
+  lastActiveAt DateTime?
+  lastSignInAt DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clerkId])
+  @@index([email])
+}
+
+model Course {
+  id          String         @id @default(cuid())
+  title       String
+  mentor      String
+  price       Float
+  badge       String?
+  color       String         @default("bg-blue-600")
+  
+  // We keep the relation to Course because progress must belong to a valid course
+  userProgress UserProgress[]
+  
+  createdAt   DateTime       @default(now())
+}
+
+model UserProgress {
+  id        String   @id @default(cuid())
+  
+  // Just a string ID from Clerk. No @relation or database-level link to the User table.
+  userId    String   
+  
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  progress  Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  // We still want this to prevent duplicate progress entries for the same person
+  @@unique([userId, courseId])
+}

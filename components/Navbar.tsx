@@ -1,50 +1,144 @@
-import {  Search, User } from 'lucide-react';
-import { UserButton, SignInButton } from '@clerk/nextjs';
+"use client"
+
+import { useState } from 'react';
+import { Search, User, Menu, X } from 'lucide-react';
+import { UserButton, SignInButton,  SignOutButton } from '@clerk/nextjs';
 import { ModeToggle } from './mode-toggle';
 import Link from 'next/link';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Navbar() {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const navLinks = [
+    { name: 'Browse', href: '#' },
+    { name: 'Mentors', href: '#' },
+    { name: 'Dashboard', href: '/studentdashboard' },
+  ];
+
   return (
-    // bg-background/80 handles the adaptive background with transparency
-    // border-border uses the theme-aware border color
-    <nav className="flex items-center justify-between px-8 py-4 bg-background/80 backdrop-blur-md sticky top-0 z-50 border-b border-border">
-      <div className="flex items-center gap-8">
-        {/* Branding stays blue, but text-foreground adapts */}
-        <div className="flex items-center gap-2 font-bold text-xl tracking-tighter text-foreground">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white">
-            <span className="text-sm">V</span>
-          </div>
-          VideoStream
-        </div>
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16">
+          
+          {/* Left: Logo & Desktop Search */}
+          <div className="flex items-center gap-8">
+            <motion.div 
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex items-center gap-2 font-bold text-xl tracking-tighter text-foreground cursor-pointer"
+            >
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
+                <span className="text-sm">V</span>
+              </div>
+              <span className="hidden sm:inline">VideoStream</span>
+            </motion.div>
 
-        {/* Search Bar - bg-muted adapts to light/dark automatically */}
-        <div className="hidden md:flex relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input 
-            type="text" 
-            placeholder="Search for courses, skills, or mentors" 
-            className="bg-muted border border-input rounded-full py-2 pl-10 pr-4 w-[400px] text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-muted-foreground"
-          />
+            {/* Desktop Search */}
+            <div className="hidden lg:flex relative group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-blue-500 transition-colors" />
+              <input 
+                type="text" 
+                placeholder="Search courses..." 
+                className="bg-muted border border-input rounded-full py-1.5 pl-10 pr-4 w-[300px] text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Right: Desktop Links & Auth */}
+          <div className="hidden md:flex items-center gap-6">
+            <div className="flex items-center gap-6 text-sm font-medium">
+              {navLinks.map((link) => (
+                <Link 
+                  key={link.name} 
+                  href={link.href} 
+                  className="text-muted-foreground hover:text-blue-500 transition-colors relative group"
+                >
+                  {link.name}
+                  <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-blue-500 transition-all group-hover:width-full" />
+                </Link>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-3 pl-4 border-l border-border">
+              <ModeToggle />
+              
+              <SignOutButton>
+                <SignInButton mode="modal">
+                  <button className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:opacity-80">
+                    Sign In
+                  </button>
+                </SignInButton>
+              </SignOutButton>
+              
+              <SignInButton>
+                <UserButton afterSignOutUrl="/" />
+              </SignInButton>
+            </div>
+          </div>
+
+          {/* Mobile Menu Button */}
+          <div className="md:hidden flex items-center gap-4">
+            <ModeToggle />
+            <button 
+              onClick={() => setIsOpen(!isOpen)}
+              className="p-2 text-foreground hover:bg-muted rounded-md transition-colors"
+            >
+              {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-6 text-sm font-medium text-foreground">
-        {/* Links use hover:text-blue-500 for consistent branding */}
-        <a href="#" className="hover:text-blue-500 transition-colors">Browse</a>
-        <a href="#" className="hover:text-blue-400 transition-colors">Mentors</a>
-        <Link href="studentdashboard" className="hover:text-blue-400 transition-colors">dashboard</Link>
-        <SignInButton className="text-blue-600 dark:text-blue-400 hover:opacity-80 transition-opacity">Sign In</SignInButton>
-        
- 
+      {/* Mobile Menu Overlay */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="md:hidden bg-background border-b border-border overflow-hidden"
+          >
+            <div className="px-4 pt-2 pb-6 space-y-4">
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input 
+                  type="text" 
+                  placeholder="Search..." 
+                  className="w-full bg-muted border border-input rounded-lg py-2 pl-10 pr-4 text-sm"
+                />
+              </div>
+              
+              {navLinks.map((link) => (
+                <Link
+                  key={link.name}
+                  href={link.href}
+                  onClick={() => setIsOpen(false)}
+                  className="block text-base font-medium text-foreground hover:text-blue-500 py-2"
+                >
+                  {link.name}
+                </Link>
+              ))}
 
-        <div className="flex items-center gap-3 pl-2 border-l border-border">
-          <ModeToggle />
-          {/* Avatar bg-secondary adapts to light/dark */}
-          <div className="w-8 h-8 rounded-full bg-secondary border border-border flex items-center justify-center">
-            <UserButton  className="w-4 h-4 text-secondary-foreground" />
-          </div>
-        </div>
-      </div>
+              <div className="pt-4 border-t border-border flex items-center justify-between">
+                <SignInButton>
+                  <div className="flex items-center gap-3">
+                    <UserButton />
+                    <span className="text-sm font-medium">Account</span>
+                  </div>
+                </SignInButton>
+                <SignOutButton>
+                  <SignInButton mode="modal">
+                    <button className="w-full py-2 bg-blue-600 text-white rounded-lg font-medium">
+                      Sign In
+                    </button>
+                  </SignInButton>
+                </SignOutButton>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </nav>
   );
 }
