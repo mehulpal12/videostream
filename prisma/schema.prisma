@@ -70,3 +70,16 @@ model UserProgress {
   // We still want this to prevent duplicate progress entries for the same person
   @@unique([userId, courseId])
 }
+
+
+model Video{
+  id String @id @default(cuid())
+  title String
+  url String
+  description String?
+  originalSize String?
+  compressedSize String?
+  duration String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

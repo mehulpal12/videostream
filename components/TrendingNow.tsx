@@ -30,7 +30,7 @@ const TrendingNow = async () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {trendingCourses.map((course) => (
             <Link 
-              href={`/courses/${course.id}`} // Dynamic link using ID
+              href={`/courses`} // Dynamic link using ID
               key={course.id} 
               className="group bg-card border border-border rounded-2xl overflow-hidden hover:border-primary/50 hover:shadow-xl hover:shadow-primary/5 transition-all cursor-pointer flex flex-col"
             >
