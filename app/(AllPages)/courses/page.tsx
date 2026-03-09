@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Play, Pause, SkipBack, SkipForward, Volume2, Settings, 
   Maximize, ChevronDown, ChevronUp, CheckCircle2, Lock, PlayCircle,
-  Download, MessageSquare, FileText, Info, Share2, Bell, User
+  Download, MessageSquare, FileText, Share2
 } from 'lucide-react';
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";

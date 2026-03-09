@@ -1,10 +1,9 @@
 "use client"
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, BookOpen, Search, Settings, 
-  BarChart3, Bell, Play, Calendar, 
-  Clock, Zap, CheckCircle2, TrendingUp, Award, BookMarked
+  BarChart3, Play, Clock, CheckCircle2, TrendingUp, Award, BookMarked
 } from 'lucide-react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -32,15 +31,41 @@ interface Course {
   createdAt: string;
 }
 
+// Shared hook to avoid duplicate fetch logic
+function useCourses() {
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchCourses() {
+      try {
+        const res = await fetch('/api/courses');
+        const data = await res.json();
+        if (!cancelled) setCourses(data);
+      } catch (err) {
+        console.error('Failed to fetch courses:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    fetchCourses();
+    return () => { cancelled = true; };
+  }, []);
+
+  return { courses, loading };
+}
+
 export default function StudentDashboard() {
   const [activeTab, setActiveTab] = useState('Dashboard');
   const [searchQuery, setSearchQuery] = useState('');
+  const { courses, loading } = useCourses();
 
   const renderContent = () => {
     switch (activeTab) {
       case 'Dashboard': return <DashboardHome />;
-      case 'My Courses': return <MyCourses searchQuery={searchQuery} />;
-      case 'Browse': return <BrowseCourses searchQuery={searchQuery} />;
+      case 'My Courses': return <MyCourses courses={courses} loading={loading} searchQuery={searchQuery} />;
+      case 'Browse': return <BrowseCourses courses={courses} loading={loading} searchQuery={searchQuery} />;
       case 'Analytics': return <AnalyticsTab />;
       case 'Settings': return <SettingsTab />;
       default: return <DashboardHome />;
@@ -165,29 +190,29 @@ function DashboardHome() {
   );
 }
 
-function MyCourses({ searchQuery }: { searchQuery: string }) {
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function fetchCourses() {
-      try {
-        const res = await fetch('/api/courses');
-        const data = await res.json();
-        setCourses(data);
-      } catch (err) {
-        console.error('Failed to fetch courses:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchCourses();
-  }, []);
-
-  const filtered = courses.filter(c => 
-    c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.mentor.toLowerCase().includes(searchQuery.toLowerCase())
+function MyCourses({ courses, loading, searchQuery }: { courses: Course[]; loading: boolean; searchQuery: string }) {
+  const filtered = useMemo(() => 
+    courses.filter(c => 
+      c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.mentor.toLowerCase().includes(searchQuery.toLowerCase())
+    ),
+    [courses, searchQuery]
   );
+
+  // Stable progress values per course (avoids hydration mismatch from Math.random)
+  const progressMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    filtered.forEach((course, i) => {
+      // Deterministic hash based on course id
+      let hash = 0;
+      for (let j = 0; j < course.id.length; j++) {
+        hash = ((hash << 5) - hash) + course.id.charCodeAt(j);
+        hash |= 0;
+      }
+      map[course.id] = Math.abs(hash % 60) + 20;
+    });
+    return map;
+  }, [filtered]);
 
   if (loading) {
     return (
@@ -208,26 +233,29 @@ function MyCourses({ searchQuery }: { searchQuery: string }) {
       
       {filtered.length > 0 ? (
         <div className="grid md:grid-cols-2 gap-6">
-          {filtered.map((course, index) => (
-            <Link key={course.id} href="/courses">
-              <Card className="bg-card/50 border-border overflow-hidden hover:border-primary/50 transition-all cursor-pointer group">
-                <div className={`h-32 ${course.color} relative`}>
-                  <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors" />
-                  {course.badge && (
-                    <span className="absolute top-3 left-3 text-[9px] font-black bg-background/80 backdrop-blur px-2 py-1 rounded">{course.badge}</span>
-                  )}
-                </div>
-                <CardContent className="p-6">
-                  <h4 className="font-bold mb-1 group-hover:text-primary transition-colors">{course.title}</h4>
-                  <p className="text-sm text-muted-foreground mb-4">{course.mentor}</p>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs text-primary font-bold">{Math.floor(Math.random() * 60 + 20)}% complete</span>
+          {filtered.map((course) => {
+            const prog = progressMap[course.id] ?? 50;
+            return (
+              <Link key={course.id} href="/courses">
+                <Card className="bg-card/50 border-border overflow-hidden hover:border-primary/50 transition-all cursor-pointer group">
+                  <div className={`h-32 ${course.color} relative`}>
+                    <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors" />
+                    {course.badge && (
+                      <span className="absolute top-3 left-3 text-[9px] font-black bg-background/80 backdrop-blur px-2 py-1 rounded">{course.badge}</span>
+                    )}
                   </div>
-                  <Progress value={Math.floor(Math.random() * 60 + 20)} className="h-2" />
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
+                  <CardContent className="p-6">
+                    <h4 className="font-bold mb-1 group-hover:text-primary transition-colors">{course.title}</h4>
+                    <p className="text-sm text-muted-foreground mb-4">{course.mentor}</p>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-xs text-primary font-bold">{prog}% complete</span>
+                    </div>
+                    <Progress value={prog} className="h-2" />
+                  </CardContent>
+                </Card>
+              </Link>
+            );
+          })}
         </div>
       ) : (
         <div className="text-center py-20 text-muted-foreground">
@@ -240,28 +268,13 @@ function MyCourses({ searchQuery }: { searchQuery: string }) {
   );
 }
 
-function BrowseCourses({ searchQuery }: { searchQuery: string }) {
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function fetchCourses() {
-      try {
-        const res = await fetch('/api/courses');
-        const data = await res.json();
-        setCourses(data);
-      } catch (err) {
-        console.error('Failed to fetch courses:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchCourses();
-  }, []);
-
-  const filtered = courses.filter(c => 
-    c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.mentor.toLowerCase().includes(searchQuery.toLowerCase())
+function BrowseCourses({ courses, loading, searchQuery }: { courses: Course[]; loading: boolean; searchQuery: string }) {
+  const filtered = useMemo(() => 
+    courses.filter(c => 
+      c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.mentor.toLowerCase().includes(searchQuery.toLowerCase())
+    ),
+    [courses, searchQuery]
   );
 
   if (loading) {

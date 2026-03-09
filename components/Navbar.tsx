@@ -1,8 +1,8 @@
 "use client"
 
 import { useState } from 'react';
-import { Search, User, Menu, X } from 'lucide-react';
-import { UserButton, SignInButton, SignOutButton, useAuth } from '@clerk/nextjs';
+import { Search, Menu, X } from 'lucide-react';
+import { UserButton, SignInButton, useAuth } from '@clerk/nextjs';
 import { ModeToggle } from './mode-toggle';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -80,7 +80,7 @@ export default function Navbar() {
               <ModeToggle />
               
               {isSignedIn ? (
-                <UserButton afterSignOutUrl="/" />
+                <UserButton />
               ) : (
                 <SignInButton mode="modal">
                   <button className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:opacity-80">

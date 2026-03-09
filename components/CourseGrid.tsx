@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState, useMemo } from 'react';
-import { Star, ChevronRight, User, Filter } from 'lucide-react';
-import { Card, CardContent } from "@/components/ui/card";
+import { Star, User, Filter } from 'lucide-react';
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from 'next/link';
 

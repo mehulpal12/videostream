@@ -5,7 +5,6 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get("search") || "";
-    const category = searchParams.get("category") || "";
 
     const courses = await prisma.course.findMany({
       where: {
@@ -48,10 +47,11 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json(course, { status: 201 });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Create course failed:", error);
+    const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      { error: "Failed to create course", details: error.message },
+      { error: "Failed to create course", details: message },
       { status: 500 }
     );
   }
