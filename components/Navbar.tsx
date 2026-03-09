@@ -2,19 +2,31 @@
 
 import { useState } from 'react';
 import { Search, User, Menu, X } from 'lucide-react';
-import { UserButton, SignInButton,  SignOutButton } from '@clerk/nextjs';
+import { UserButton, SignInButton, SignOutButton, useAuth } from '@clerk/nextjs';
 import { ModeToggle } from './mode-toggle';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const { isSignedIn } = useAuth();
+  const router = useRouter();
 
   const navLinks = [
-    { name: 'Browse', href: '#' },
+    { name: 'Browse', href: '/' },
     { name: 'Mentors', href: '#' },
     { name: 'Dashboard', href: '/studentdashboard' },
   ];
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      router.push(`/?search=${encodeURIComponent(searchQuery.trim())}`);
+      setIsOpen(false);
+    }
+  };
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
@@ -28,21 +40,25 @@ export default function Navbar() {
               animate={{ opacity: 1, x: 0 }}
               className="flex items-center gap-2 font-bold text-xl tracking-tighter text-foreground cursor-pointer"
             >
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
-                <span className="text-sm">V</span>
-              </div>
-              <span className="hidden sm:inline">VideoStream</span>
+              <Link href="/" className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
+                  <span className="text-sm">V</span>
+                </div>
+                <span className="hidden sm:inline">VideoStream</span>
+              </Link>
             </motion.div>
 
             {/* Desktop Search */}
-            <div className="hidden lg:flex relative group">
+            <form onSubmit={handleSearch} className="hidden lg:flex relative group">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-blue-500 transition-colors" />
               <input 
                 type="text" 
                 placeholder="Search courses..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="bg-muted border border-input rounded-full py-1.5 pl-10 pr-4 w-[300px] text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
               />
-            </div>
+            </form>
           </div>
 
           {/* Right: Desktop Links & Auth */}
@@ -63,17 +79,15 @@ export default function Navbar() {
             <div className="flex items-center gap-3 pl-4 border-l border-border">
               <ModeToggle />
               
-              <SignOutButton>
+              {isSignedIn ? (
+                <UserButton afterSignOutUrl="/" />
+              ) : (
                 <SignInButton mode="modal">
                   <button className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:opacity-80">
                     Sign In
                   </button>
                 </SignInButton>
-              </SignOutButton>
-              
-              <SignInButton>
-                <UserButton afterSignOutUrl="/" />
-              </SignInButton>
+              )}
             </div>
           </div>
 
@@ -100,14 +114,16 @@ export default function Navbar() {
             className="md:hidden bg-background border-b border-border overflow-hidden"
           >
             <div className="px-4 pt-2 pb-6 space-y-4">
-              <div className="relative mb-4">
+              <form onSubmit={handleSearch} className="relative mb-4">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input 
                   type="text" 
                   placeholder="Search..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full bg-muted border border-input rounded-lg py-2 pl-10 pr-4 text-sm"
                 />
-              </div>
+              </form>
               
               {navLinks.map((link) => (
                 <Link
@@ -121,19 +137,18 @@ export default function Navbar() {
               ))}
 
               <div className="pt-4 border-t border-border flex items-center justify-between">
-                <SignInButton>
+                {isSignedIn ? (
                   <div className="flex items-center gap-3">
                     <UserButton />
                     <span className="text-sm font-medium">Account</span>
                   </div>
-                </SignInButton>
-                <SignOutButton>
+                ) : (
                   <SignInButton mode="modal">
                     <button className="w-full py-2 bg-blue-600 text-white rounded-lg font-medium">
                       Sign In
                     </button>
                   </SignInButton>
-                </SignOutButton>
+                )}
               </div>
             </div>
           </motion.div>

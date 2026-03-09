@@ -1,10 +1,10 @@
 "use client"
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, BookOpen, Search, Settings, 
   BarChart3, Bell, Play, Calendar, 
-  Clock, Zap, CheckCircle2 
+  Clock, Zap, CheckCircle2, TrendingUp, Award, BookMarked
 } from 'lucide-react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -12,26 +12,37 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ModeToggle } from '@/components/mode-toggle';
+import Link from 'next/link';
 
-// Design Constants mapping to Tailwind-friendly logic
 const DESIGN = {
   primary: "bg-[#2563eb]",
   primaryText: "text-[#2563eb]",
   primaryHover: "hover:bg-[#1d4ed8]",
-  border: "border-border", // Uses CSS variable for theme switching
+  border: "border-border",
   surface: "bg-card/50 backdrop-blur-sm",
 };
 
+interface Course {
+  id: string;
+  title: string;
+  mentor: string;
+  price: number;
+  badge?: string | null;
+  color: string;
+  createdAt: string;
+}
+
 export default function StudentDashboard() {
   const [activeTab, setActiveTab] = useState('Dashboard');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const renderContent = () => {
     switch (activeTab) {
       case 'Dashboard': return <DashboardHome />;
-      case 'My Courses': return <Placeholder title="My Enrolled Courses" />;
-      case 'Browse': return <Placeholder title="Explore New Skills" />;
-      case 'Analytics': return <Placeholder title="Learning Progress Analytics" />;
-      case 'Settings': return <Placeholder title="Account Settings" />;
+      case 'My Courses': return <MyCourses searchQuery={searchQuery} />;
+      case 'Browse': return <BrowseCourses searchQuery={searchQuery} />;
+      case 'Analytics': return <AnalyticsTab />;
+      case 'Settings': return <SettingsTab />;
       default: return <DashboardHome />;
     }
   };
@@ -42,10 +53,10 @@ export default function StudentDashboard() {
       {/* --- SIDEBAR NAVIGATION --- */}
       <aside className={`w-64 border-r ${DESIGN.border} flex flex-col sticky top-0 h-screen bg-card/30`}>
         <div className="p-8">
-          <div className={`flex items-center gap-2 font-bold text-xl tracking-tighter ${DESIGN.primaryText}`}>
+          <Link href="/" className={`flex items-center gap-2 font-bold text-xl tracking-tighter ${DESIGN.primaryText}`}>
             <div className={`w-8 h-8 ${DESIGN.primary} rounded-lg flex items-center justify-center text-white`}>V</div>
             VideoStream
-          </div>
+          </Link>
         </div>
 
         <nav className="flex-1 px-4 space-y-2">
@@ -75,6 +86,8 @@ export default function StudentDashboard() {
             <input 
               type="text" 
               placeholder="Search courses..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               className={`w-full bg-muted/50 border ${DESIGN.border} rounded-full py-1.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all`}
             />
           </div>
@@ -136,9 +149,11 @@ function DashboardHome() {
           <p className="text-muted-foreground text-sm max-w-md mb-8 leading-relaxed">
             Master design patterns, performance optimization, and scalable architecture.
           </p>
-          <Button className={`${DESIGN.primary} ${DESIGN.primaryHover} text-white w-fit px-8 py-6 rounded-xl gap-2 shadow-xl shadow-blue-600/20`}>
-            <Play size={18} fill="currentColor" /> Resume Learning
-          </Button>
+          <Link href="/courses">
+            <Button className={`${DESIGN.primary} ${DESIGN.primaryHover} text-white w-fit px-8 py-6 rounded-xl gap-2 shadow-xl shadow-blue-600/20`}>
+              <Play size={18} fill="currentColor" /> Resume Learning
+            </Button>
+          </Link>
         </div>
       </div>
 
@@ -150,20 +165,307 @@ function DashboardHome() {
   );
 }
 
-function CourseCard({ title, progress }: { title: string, progress: number }) {
+function MyCourses({ searchQuery }: { searchQuery: string }) {
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchCourses() {
+      try {
+        const res = await fetch('/api/courses');
+        const data = await res.json();
+        setCourses(data);
+      } catch (err) {
+        console.error('Failed to fetch courses:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchCourses();
+  }, []);
+
+  const filtered = courses.filter(c => 
+    c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    c.mentor.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    );
+  }
+
   return (
-    <Card className="bg-card/50 border-border overflow-hidden">
-      <CardContent className="p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h4 className="font-bold">{title}</h4>
-          <span className="text-xs text-primary font-bold">{progress}%</span>
+    <div className="max-w-5xl mx-auto p-8 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">My Enrolled Courses</h1>
+          <p className="text-muted-foreground text-sm mt-1">{filtered.length} courses enrolled</p>
         </div>
-        <Progress value={progress} className="h-2" />
-      </CardContent>
-    </Card>
+      </div>
+      
+      {filtered.length > 0 ? (
+        <div className="grid md:grid-cols-2 gap-6">
+          {filtered.map((course, index) => (
+            <Link key={course.id} href="/courses">
+              <Card className="bg-card/50 border-border overflow-hidden hover:border-primary/50 transition-all cursor-pointer group">
+                <div className={`h-32 ${course.color} relative`}>
+                  <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors" />
+                  {course.badge && (
+                    <span className="absolute top-3 left-3 text-[9px] font-black bg-background/80 backdrop-blur px-2 py-1 rounded">{course.badge}</span>
+                  )}
+                </div>
+                <CardContent className="p-6">
+                  <h4 className="font-bold mb-1 group-hover:text-primary transition-colors">{course.title}</h4>
+                  <p className="text-sm text-muted-foreground mb-4">{course.mentor}</p>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs text-primary font-bold">{Math.floor(Math.random() * 60 + 20)}% complete</span>
+                  </div>
+                  <Progress value={Math.floor(Math.random() * 60 + 20)} className="h-2" />
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-20 text-muted-foreground">
+          <BookMarked className="w-12 h-12 mx-auto mb-4 opacity-50" />
+          <p className="text-lg font-medium">No courses found</p>
+          <p className="text-sm mt-1">Try adjusting your search or browse new courses</p>
+        </div>
+      )}
+    </div>
   );
 }
 
-function Placeholder({ title }: { title: string }) {
-  return <div className="p-8"><h1 className="text-2xl font-bold">{title}</h1><p className="text-muted-foreground mt-2">Section content coming soon...</p></div>;
+function BrowseCourses({ searchQuery }: { searchQuery: string }) {
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchCourses() {
+      try {
+        const res = await fetch('/api/courses');
+        const data = await res.json();
+        setCourses(data);
+      } catch (err) {
+        console.error('Failed to fetch courses:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchCourses();
+  }, []);
+
+  const filtered = courses.filter(c => 
+    c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    c.mentor.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto p-8 space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Explore New Skills</h1>
+        <p className="text-muted-foreground text-sm mt-1">{filtered.length} courses available</p>
+      </div>
+      
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filtered.map((course) => (
+          <Link key={course.id} href="/courses">
+            <Card className="bg-card/50 border-border overflow-hidden hover:border-primary/50 hover:-translate-y-1 transition-all cursor-pointer group">
+              <div className={`h-36 ${course.color} relative`}>
+                <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors" />
+                {course.badge && (
+                  <span className="absolute top-3 left-3 text-[9px] font-black bg-background/80 backdrop-blur px-2 py-1 rounded">{course.badge}</span>
+                )}
+              </div>
+              <CardContent className="p-5">
+                <h4 className="font-bold text-sm mb-1 group-hover:text-primary transition-colors line-clamp-2">{course.title}</h4>
+                <p className="text-xs text-muted-foreground mb-3">{course.mentor}</p>
+                <div className="flex items-center justify-between border-t border-border pt-3">
+                  <span className="font-bold">${course.price.toFixed(2)}</span>
+                  <Button size="sm" className="h-7 text-[11px] bg-primary text-white">Enroll</Button>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+        ))}
+      </div>
+
+      {filtered.length === 0 && (
+        <div className="text-center py-20 text-muted-foreground">
+          <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
+          <p className="text-lg font-medium">No courses found</p>
+          <p className="text-sm mt-1">Try a different search term</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AnalyticsTab() {
+  const stats = [
+    { icon: <BookOpen className="w-5 h-5" />, label: "Courses Enrolled", value: "8", color: "text-blue-500" },
+    { icon: <Clock className="w-5 h-5" />, label: "Hours Learned", value: "124", color: "text-green-500" },
+    { icon: <TrendingUp className="w-5 h-5" />, label: "Avg. Progress", value: "67%", color: "text-purple-500" },
+    { icon: <Award className="w-5 h-5" />, label: "Certificates", value: "3", color: "text-yellow-500" },
+  ];
+
+  const weeklyData = [
+    { day: "Mon", hours: 2.5 },
+    { day: "Tue", hours: 1.8 },
+    { day: "Wed", hours: 3.2 },
+    { day: "Thu", hours: 0.5 },
+    { day: "Fri", hours: 2.0 },
+    { day: "Sat", hours: 4.1 },
+    { day: "Sun", hours: 1.5 },
+  ];
+
+  const maxHours = Math.max(...weeklyData.map(d => d.hours));
+
+  return (
+    <div className="max-w-5xl mx-auto p-8 space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold">Learning Progress Analytics</h1>
+        <p className="text-muted-foreground text-sm mt-1">Track your learning journey</p>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {stats.map((stat) => (
+          <Card key={stat.label} className="bg-card/50 border-border p-5">
+            <div className={`${stat.color} mb-3`}>{stat.icon}</div>
+            <p className="text-2xl font-black">{stat.value}</p>
+            <p className="text-xs text-muted-foreground mt-1">{stat.label}</p>
+          </Card>
+        ))}
+      </div>
+
+      {/* Weekly Activity Chart */}
+      <Card className="bg-card/50 border-border p-6">
+        <h3 className="font-bold mb-6">Weekly Activity</h3>
+        <div className="flex items-end gap-4 h-40">
+          {weeklyData.map((data) => (
+            <div key={data.day} className="flex-1 flex flex-col items-center gap-2">
+              <span className="text-xs font-bold text-muted-foreground">{data.hours}h</span>
+              <div 
+                className="w-full bg-primary/20 rounded-t-lg relative overflow-hidden transition-all hover:bg-primary/30"
+                style={{ height: `${(data.hours / maxHours) * 100}%` }}
+              >
+                <div 
+                  className="absolute bottom-0 w-full bg-primary rounded-t-lg transition-all"
+                  style={{ height: '100%' }}
+                />
+              </div>
+              <span className="text-[10px] font-bold text-muted-foreground">{data.day}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Recent Activity */}
+      <Card className="bg-card/50 border-border p-6">
+        <h3 className="font-bold mb-4">Recent Activity</h3>
+        <div className="space-y-4">
+          <ActivityItem title="Completed 'Advanced Grid Layouts'" time="2 hours ago" icon={<CheckCircle2 className="w-4 h-4 text-green-500" />} />
+          <ActivityItem title="Started 'Color Theory for Digital'" time="5 hours ago" icon={<Play className="w-4 h-4 text-blue-500" />} />
+          <ActivityItem title="Earned certificate in 'React Basics'" time="Yesterday" icon={<Award className="w-4 h-4 text-yellow-500" />} />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function ActivityItem({ title, time, icon }: { title: string; time: string; icon: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-4 p-3 rounded-lg hover:bg-accent transition-colors">
+      <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">{icon}</div>
+      <div className="flex-1">
+        <p className="text-sm font-medium">{title}</p>
+        <p className="text-xs text-muted-foreground">{time}</p>
+      </div>
+    </div>
+  );
+}
+
+function SettingsTab() {
+  const [notifications, setNotifications] = useState(true);
+  const [emailUpdates, setEmailUpdates] = useState(false);
+
+  return (
+    <div className="max-w-3xl mx-auto p-8 space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold">Account Settings</h1>
+        <p className="text-muted-foreground text-sm mt-1">Manage your preferences</p>
+      </div>
+
+      <Card className="bg-card/50 border-border p-6 space-y-6">
+        <h3 className="font-bold">Profile</h3>
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <label className="text-sm font-medium text-muted-foreground mb-1.5 block">First Name</label>
+            <input className="w-full bg-muted/50 border border-border rounded-lg px-4 py-2 text-sm" defaultValue="Alex" />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-muted-foreground mb-1.5 block">Last Name</label>
+            <input className="w-full bg-muted/50 border border-border rounded-lg px-4 py-2 text-sm" defaultValue="Rivera" />
+          </div>
+          <div className="md:col-span-2">
+            <label className="text-sm font-medium text-muted-foreground mb-1.5 block">Email</label>
+            <input className="w-full bg-muted/50 border border-border rounded-lg px-4 py-2 text-sm" defaultValue="alex@example.com" />
+          </div>
+        </div>
+      </Card>
+
+      <Card className="bg-card/50 border-border p-6 space-y-4">
+        <h3 className="font-bold">Notifications</h3>
+        <label className="flex items-center justify-between cursor-pointer">
+          <span className="text-sm">Push Notifications</span>
+          <button
+            onClick={() => setNotifications(!notifications)}
+            className={`w-11 h-6 rounded-full transition-colors ${notifications ? 'bg-primary' : 'bg-muted'} relative`}
+          >
+            <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${notifications ? 'translate-x-5' : 'translate-x-0.5'}`} />
+          </button>
+        </label>
+        <label className="flex items-center justify-between cursor-pointer">
+          <span className="text-sm">Email Updates</span>
+          <button
+            onClick={() => setEmailUpdates(!emailUpdates)}
+            className={`w-11 h-6 rounded-full transition-colors ${emailUpdates ? 'bg-primary' : 'bg-muted'} relative`}
+          >
+            <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${emailUpdates ? 'translate-x-5' : 'translate-x-0.5'}`} />
+          </button>
+        </label>
+      </Card>
+
+      <Button className="bg-primary text-white">Save Changes</Button>
+    </div>
+  );
+}
+
+function CourseCard({ title, progress }: { title: string, progress: number }) {
+  return (
+    <Link href="/courses">
+      <Card className="bg-card/50 border-border overflow-hidden hover:border-primary/50 transition-all cursor-pointer">
+        <CardContent className="p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h4 className="font-bold">{title}</h4>
+            <span className="text-xs text-primary font-bold">{progress}%</span>
+          </div>
+          <Progress value={progress} className="h-2" />
+        </CardContent>
+      </Card>
+    </Link>
+  );
 }

@@ -2,11 +2,9 @@ import { ShoppingCart } from 'lucide-react'
 import Link from 'next/link'
 import React from 'react'
 import { Button } from "@/components/ui/button"
-import {prisma} from "@/lib/prisma" // Import your Prisma singleton
+import { prisma } from "@/lib/prisma"
 
 const TrendingNow = async () => {
-  // 1. Fetch data from Neon via Prisma
-  // We'll take the 3 most recent courses
   const trendingCourses = await prisma.course.findMany({
     take: 3,
     orderBy: {
@@ -15,22 +13,24 @@ const TrendingNow = async () => {
   });
 
   return (
-    <div className=" text-foreground transition-colors duration-300">
+    <div className="text-foreground transition-colors duration-300">
       <section className="mb-16">
         <div className="flex justify-between items-end mb-8">
           <div>
             <h2 className="text-2xl font-bold tracking-tight">Trending Now</h2>
             <p className="text-muted-foreground text-sm mt-1">Hand-picked courses by our top mentors.</p>
           </div>
-          <Button variant="link" className="text-primary font-semibold h-auto p-0">
-            View all
-          </Button>
+          <Link href="/#courses">
+            <Button variant="link" className="text-primary font-semibold h-auto p-0">
+              View all
+            </Button>
+          </Link>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {trendingCourses.map((course) => (
             <Link 
-              href={`/courses`} // Dynamic link using ID
+              href="/courses"
               key={course.id} 
               className="group bg-card border border-border rounded-2xl overflow-hidden hover:border-primary/50 hover:shadow-xl hover:shadow-primary/5 transition-all cursor-pointer flex flex-col"
             >
@@ -54,7 +54,6 @@ const TrendingNow = async () => {
                 </p>
                 
                 <div className="mt-auto flex items-center justify-between border-t border-border pt-4">
-                  {/* Rendering Float as currency */}
                   <span className="text-xl font-black">
                     ${course.price.toFixed(2)}
                   </span>

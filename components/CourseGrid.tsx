@@ -1,23 +1,79 @@
-import React from 'react';
+"use client";
+
+import React, { useState, useMemo } from 'react';
 import { Star, ChevronRight, User, Filter } from 'lucide-react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {prisma} from "@/lib/prisma"; 
+import Link from 'next/link';
 
 // --- CONSTANTS ---
-const DIFFICULTIES = ['Beginner', 'Intermediate', 'Expert'];
 const PRICE_TYPES = ['Free', 'Paid'];
+const SORT_OPTIONS = ['Most Relevant', 'Newest', 'Price: Low to High', 'Price: High to Low'];
 
-export default async function CourseGrid() {
-  // 1. Fetch courses from the Backend (Neon DB)
-  const courses = await prisma.course.findMany({
-    orderBy: {
-      createdAt: 'desc'
+interface Course {
+  id: string;
+  title: string;
+  mentor: string;
+  price: number;
+  badge?: string | null;
+  color: string;
+  createdAt: string;
+}
+
+export default function CourseGrid({ 
+  courses: initialCourses, 
+  searchQuery = '' 
+}: { 
+  courses: Course[]; 
+  searchQuery?: string;
+}) {
+  const [priceFilter, setPriceFilter] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState('Most Relevant');
+
+  const filteredAndSorted = useMemo(() => {
+    let result = [...initialCourses];
+
+    // Search filter (from query param)
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(c => 
+        c.title.toLowerCase().includes(q) || 
+        c.mentor.toLowerCase().includes(q) ||
+        (c.badge && c.badge.toLowerCase().includes(q))
+      );
     }
-  });
+
+    // Price filter
+    if (priceFilter === 'Free') {
+      result = result.filter(c => c.price === 0);
+    } else if (priceFilter === 'Paid') {
+      result = result.filter(c => c.price > 0);
+    }
+
+    // Sort
+    switch (sortBy) {
+      case 'Newest':
+        result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        break;
+      case 'Price: Low to High':
+        result.sort((a, b) => a.price - b.price);
+        break;
+      case 'Price: High to Low':
+        result.sort((a, b) => b.price - a.price);
+        break;
+      default:
+        break;
+    }
+
+    return result;
+  }, [initialCourses, searchQuery, priceFilter, sortBy]);
+
+  const handlePriceFilter = (type: string) => {
+    setPriceFilter(prev => prev === type ? null : type);
+  };
 
   return (
-    <div className="grid lg:grid-cols-[280px_1fr] gap-12 items-start bg-background text-foreground transition-colors duration-300">
+    <div id="courses" className="grid lg:grid-cols-[280px_1fr] gap-12 items-start bg-background text-foreground transition-colors duration-300">
       
       {/* SIDEBAR FILTERS */}
       <aside className="space-y-10 sticky top-24 hidden lg:block">
@@ -26,8 +82,32 @@ export default async function CourseGrid() {
             <Filter size={14} /> Filters
           </h3>
           <div className="space-y-8">
-            <FilterSection title="Difficulty" items={DIFFICULTIES} type="checkbox" />
-            <FilterSection title="Price Range" items={PRICE_TYPES} type="radio" name="price" />
+            {/* Price Range Filter */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-bold text-foreground">Price Range</h4>
+              <div className="space-y-3">
+                {PRICE_TYPES.map((item) => (
+                  <label key={item} className="flex items-center gap-3 text-muted-foreground text-sm cursor-pointer hover:text-primary transition group">
+                    <input 
+                      type="radio" 
+                      name="price"
+                      checked={priceFilter === item}
+                      onChange={() => handlePriceFilter(item)}
+                      className="rounded border-border bg-transparent text-primary focus:ring-primary" 
+                    /> 
+                    <span className="group-hover:translate-x-1 transition-transform">{item}</span>
+                  </label>
+                ))}
+                {priceFilter && (
+                  <button 
+                    onClick={() => setPriceFilter(null)}
+                    className="text-xs text-primary hover:underline mt-1"
+                  >
+                    Clear filter
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -41,59 +121,42 @@ export default async function CourseGrid() {
       <section>
         <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4 border-b border-border pb-6">
           <span className="text-muted-foreground text-sm font-medium">
-            Showing <span className="text-foreground font-bold">{courses.length}</span> results
+            Showing <span className="text-foreground font-bold">{filteredAndSorted.length}</span> results
+            {searchQuery && (
+              <span> for &quot;<span className="text-primary font-bold">{searchQuery}</span>&quot;</span>
+            )}
           </span>
           <div className="flex items-center gap-3">
             <span className="text-muted-foreground text-sm">Sort by:</span>
-            <select className="bg-transparent text-sm font-bold focus:outline-none cursor-pointer text-primary border-none outline-none">
-              <option className="bg-background">Most Relevant</option>
-              <option className="bg-background">Newest</option>
-              <option className="bg-background">Price: Low to High</option>
+            <select 
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="bg-transparent text-sm font-bold focus:outline-none cursor-pointer text-primary border-none outline-none"
+            >
+              {SORT_OPTIONS.map(opt => (
+                <option key={opt} className="bg-background">{opt}</option>
+              ))}
             </select>
           </div>
         </div>
 
-        {/* 2. Map through the actual database results */}
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {courses.map((course) => (
+          {filteredAndSorted.map((course) => (
             <ItemCard key={course.id} course={course} />
           ))}
           
-          {courses.length === 0 && (
+          {filteredAndSorted.length === 0 && (
             <div className="col-span-full py-20 text-center text-muted-foreground italic">
-              No courses found in the database.
+              {searchQuery ? `No courses found matching "${searchQuery}".` : 'No courses found in the database.'}
             </div>
           )}
         </div>
-
-        {/* <Pagination /> */}
       </section>
     </div>
   );
 }
 
 // --- SUB-COMPONENTS ---
-
-
-// ... FilterSection, MentorCard, and Pagination remain the same
-
-const FilterSection = ({ title, items, type, name }: any) => (
-  <div className="space-y-4">
-    <h4 className="text-sm font-bold text-foreground">{title}</h4>
-    <div className="space-y-3">
-      {items.map((item: string) => (
-        <label key={item} className="flex items-center gap-3 text-muted-foreground text-sm cursor-pointer hover:text-primary transition group">
-          <input 
-            type={type} 
-            name={name}
-            className="rounded border-border bg-transparent text-primary focus:ring-primary" 
-          /> 
-          <span className="group-hover:translate-x-1 transition-transform">{item}</span>
-        </label>
-      ))}
-    </div>
-  </div>
-);
 
 const MentorCard = ({ name, role }: { name: string; role: string }) => (
   <Card className="bg-primary/5 border-primary/20 rounded-2xl p-6 text-center group shadow-none">
@@ -114,44 +177,46 @@ const MentorCard = ({ name, role }: { name: string; role: string }) => (
   </Card>
 );
 
-const ItemCard = ({ course }: { course: any }) => (
-  <Card className="bg-card text-card-foreground border-border rounded-xl overflow-hidden hover:border-primary/50 hover:-translate-y-1 transition-all duration-300 group shadow-sm hover:shadow-xl hover:shadow-primary/5">
-    <div className={`h-44 ${course.color || 'bg-muted'} relative overflow-hidden`}>
-      <div className="absolute inset-0 bg-primary/10 group-hover:bg-transparent transition-colors" />
-      <div className="absolute bottom-3 right-3 bg-background/80 backdrop-blur-md px-2 py-1 rounded text-[10px] font-mono border border-border">
-        12h 45m
+const ItemCard = ({ course }: { course: Course }) => (
+  <Link href="/courses">
+    <Card className="bg-card text-card-foreground border-border rounded-xl overflow-hidden hover:border-primary/50 hover:-translate-y-1 transition-all duration-300 group shadow-sm hover:shadow-xl hover:shadow-primary/5 cursor-pointer">
+      <div className={`h-44 ${course.color || 'bg-muted'} relative overflow-hidden`}>
+        <div className="absolute inset-0 bg-primary/10 group-hover:bg-transparent transition-colors" />
+        <div className="absolute bottom-3 right-3 bg-background/80 backdrop-blur-md px-2 py-1 rounded text-[10px] font-mono border border-border">
+          12h 45m
+        </div>
       </div>
-    </div>
-    
-    <div className="p-5 space-y-4">
-      <div className="flex gap-2">
-        {course.badge && (
-          <span className="text-[9px] font-black bg-primary/10 text-primary px-2 py-1 rounded uppercase tracking-tighter">
-            {course.badge}
+      
+      <div className="p-5 space-y-4">
+        <div className="flex gap-2">
+          {course.badge && (
+            <span className="text-[9px] font-black bg-primary/10 text-primary px-2 py-1 rounded uppercase tracking-tighter">
+              {course.badge}
+            </span>
+          )}
+          <span className="text-[9px] font-black bg-muted text-muted-foreground px-2 py-1 rounded uppercase tracking-tighter">Course</span>
+        </div>
+        
+        <h3 className="font-bold text-sm leading-snug group-hover:text-primary transition-colors line-clamp-2 min-h-[2.5rem]">
+          {course.title}
+        </h3>
+        
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center border border-border">
+            <User size={12}/>
+          </div>
+          {course.mentor}
+        </div>
+        
+        <div className="flex items-center justify-between pt-2 border-t border-border">
+          <div className="flex items-center gap-1 text-yellow-500 text-xs font-bold">
+            <Star className="w-3 h-3 fill-yellow-500" /> 4.9
+          </div>
+          <span className="font-bold text-foreground">
+            ${course.price.toFixed(2)}
           </span>
-        )}
-        <span className="text-[9px] font-black bg-muted text-muted-foreground px-2 py-1 rounded uppercase tracking-tighter">Course</span>
-      </div>
-      
-      <h3 className="font-bold text-sm leading-snug group-hover:text-primary transition-colors line-clamp-2 min-h-[2.5rem]">
-        {course.title}
-      </h3>
-      
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center border border-border">
-          <User size={12}/>
         </div>
-        {course.mentor}
       </div>
-      
-      <div className="flex items-center justify-between pt-2 border-t border-border">
-        <div className="flex items-center gap-1 text-yellow-500 text-xs font-bold">
-          <Star className="w-3 h-3 fill-yellow-500" /> 4.9
-        </div>
-        <span className="font-bold text-foreground">
-          ${course.price.toFixed(2)}
-        </span>
-      </div>
-    </div>
-  </Card>
+    </Card>
+  </Link>
 );
