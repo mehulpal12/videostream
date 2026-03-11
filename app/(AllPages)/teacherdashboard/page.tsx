@@ -38,6 +38,7 @@ export default function CourseBuilder() {
   // --- LECTURE UPLOAD STATE ---
   const [lectureTitle, setLectureTitle] = useState("");
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0); // Real-time %
   
   // --- UI STATUS ---
   const [isCreatingCourse, setIsCreatingCourse] = useState(false);
@@ -46,23 +47,18 @@ export default function CourseBuilder() {
   const [newSectionTitle, setNewSectionTitle] = useState("");
 
   // 1. Initialize the Course
-const handleInitialSave = async () => {
-  setIsCreatingCourse(true);
-  try {
-    const res = await axios.post("/api/courses", { title: courseName, mentor, price });
-    
-    setCourseId(res.data.id);
-    
-    // IF the course already existed, this will load all the previous sections/lectures!
-    if (res.data.sections) {
-      setSections(res.data.sections);
+  const handleInitialSave = async () => {
+    setIsCreatingCourse(true);
+    try {
+      const res = await axios.post("/api/courses", { title: courseName, mentor, price });
+      setCourseId(res.data.id);
+      if (res.data.sections) setSections(res.data.sections);
+    } catch (error) {
+       alert("Error synchronizing course");
+    } finally {
+      setIsCreatingCourse(false);
     }
-  } catch (error) {
-     alert("Error syncronizing course");
-  } finally {
-    setIsCreatingCourse(false);
-  }
-};
+  };
 
   // 2. Add New Section
   const handleAddSection = async () => {
@@ -81,11 +77,13 @@ const handleInitialSave = async () => {
     }
   };
 
-  // 3. Multi-Lecture Sequential Upload
+  // 3. Real-Time Multi-Lecture Upload
   const handleLectureUpload = async () => {
     if (!videoFile || !activeSectionId) return;
 
     setIsUploading(true);
+    setUploadProgress(0); // Start at 0
+
     const currentSection = sections.find((s) => s.id === activeSectionId);
     const nextOrder = (currentSection?.lectures?.length || 0) + 1;
 
@@ -96,37 +94,52 @@ const handleInitialSave = async () => {
     formData.append("order", nextOrder.toString());
 
     try {
-      const res = await axios.post("/api/upload/lecture", formData);
+      // THE REAL-TIME MAGIC: Axios onUploadProgress
+      const res = await axios.post("/api/upload/lecture", formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const percentCompleted = Math.round(
+              (progressEvent.loaded * 100) / progressEvent.total
+            );
+            setUploadProgress(percentCompleted);
+          }
+        },
+      });
 
-      // Update state and automatically sort by order
-      setSections((prev) =>
-        prev.map((s) =>
-          s.id === activeSectionId
-            ? { ...s, lectures: [...(s.lectures || []), res.data].sort((a, b) => a.order - b.order) }
-            : s
-        )
-      );
+      if (res.status === 201 || res.status === 200) {
+        setSections((prev) =>
+          prev.map((s) =>
+            s.id === activeSectionId
+              ? { ...s, lectures: [...(s.lectures || []), res.data].sort((a, b) => a.order - b.order) }
+              : s
+          )
+        );
 
-      // Reset form for next upload in same section
-      setVideoFile(null);
-      setLectureTitle("");
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      
+        // Reset
+        setVideoFile(null);
+        setLectureTitle("");
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
     } catch (error: any) {
       alert(error.response?.data?.error || "Upload failed");
     } finally {
       setIsUploading(false);
+      // Delay resetting progress slightly for visual satisfaction
+      setTimeout(() => setUploadProgress(0), 10000);
     }
   };
 
   const activeSection = sections.find(s => s.id === activeSectionId);
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#0B0F17] text-slate-100">
+    <div className="flex flex-col min-h-screen bg-[#0B0F17] text-slate-100 font-sans">
       {/* HEADER */}
       <header className="sticky top-0 z-50 flex items-center justify-between px-8 py-4 bg-[#0B0F17]/90 backdrop-blur-xl border-b border-white/5">
         <div className="flex items-center gap-4">
-          <div className="bg-blue-600 p-2 rounded-lg shadow-lg shadow-blue-600/20"><PlayCircle size={20} /></div>
+          <div className="bg-blue-600 p-2 rounded-lg"><PlayCircle size={20} /></div>
           <div>
             <input 
               className="bg-transparent border-none text-lg font-bold focus:ring-0 w-64 p-0 outline-none" 
@@ -138,148 +151,149 @@ const handleInitialSave = async () => {
         </div>
         
         {!courseId ? (
-          <button onClick={handleInitialSave} disabled={isCreatingCourse} className="bg-blue-600 px-6 py-2 rounded-xl font-bold text-sm hover:bg-blue-500 transition-all flex items-center gap-2">
-            {isCreatingCourse ? <Loader2 className="animate-spin" size={16}/> : <Save size={16}/>}
-            Initialize Course
-          </button>
+          <button onClick={handleInitialSave} className="bg-blue-600 px-6 py-2 rounded-xl font-bold text-sm">Initialize Course</button>
         ) : (
-          <div className="flex items-center gap-2 text-green-400 text-xs font-bold bg-green-400/10 px-4 py-2 rounded-full border border-green-400/20">
-            <CheckCircle2 size={14} /> Course Structure Active
+          <div className="flex items-center gap-2 text-green-400 text-xs font-bold bg-green-400/10 px-4 py-2 rounded-full">
+            <CheckCircle2 size={14} /> System Active
           </div>
         )}
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* SIDEBAR: Curriculum Tree */}
+        {/* SIDEBAR */}
         <aside className="w-80 border-r border-white/5 bg-[#0B0F17] flex flex-col">
-          <div className="p-6 flex-1 overflow-y-auto custom-scrollbar">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xs font-black uppercase text-slate-500 tracking-widest">Curriculum</h3>
-              {courseId && <button onClick={() => setShowAddSection(true)} className="text-blue-500 hover:scale-110 transition-transform"><Plus size={20}/></button>}
-            </div>
-
+          <div className="p-6 flex-1 overflow-y-auto">
+            <h3 className="text-xs font-black uppercase text-slate-500 mb-6">Curriculum</h3>
             <div className="space-y-4">
               {sections.map((section) => (
-                <div key={section.id} className="group">
+                <div key={section.id}>
                   <div 
                     onClick={() => setActiveSectionId(section.id)}
-                    className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${activeSectionId === section.id ? 'border-blue-500/50 bg-blue-500/10' : 'border-white/5 hover:bg-white/5'}`}
+                    className={`p-3 rounded-xl border cursor-pointer flex items-center justify-between ${activeSectionId === section.id ? 'border-blue-500 bg-blue-500/10' : 'border-white/5'}`}
                   >
-                    <span className="text-xs font-bold truncate">Section {section.order}: {section.title}</span>
-                    <ChevronRight size={14} className={`transition-transform ${activeSectionId === section.id ? 'rotate-90 text-blue-500' : 'text-slate-600'}`}/>
+                    <span className="text-xs font-bold">Section {section.order}: {section.title}</span>
+                    <ChevronRight size={14} className={activeSectionId === section.id ? 'rotate-90 text-blue-500' : ''}/>
                   </div>
-                  
-                  <AnimatePresence>
-                    {activeSectionId === section.id && (
-                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="overflow-hidden">
-                        <div className="pl-4 mt-2 space-y-1 border-l-2 border-white/5 ml-2">
-                          {section.lectures.map((lec) => (
-                            <div key={lec.id} className="flex items-center gap-2 text-[10px] text-slate-400 py-2 hover:text-white transition-colors">
-                              <FileVideo size={12} className="text-blue-500/50"/> {lec.order}. {lec.title}
-                            </div>
-                          ))}
+                  {activeSectionId === section.id && (
+                    <div className="pl-4 mt-2 space-y-1 border-l-2 border-white/5 ml-2">
+                      {section.lectures.map((lec) => (
+                        <div key={lec.id} className="text-[10px] text-slate-400 py-1 flex items-center gap-2">
+                          <FileVideo size={10}/> {lec.order}. {lec.title}
                         </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
+              {courseId && <button onClick={() => setShowAddSection(true)} className="w-full py-2 border border-dashed border-white/10 rounded-xl text-xs text-slate-500 hover:text-white transition-all">+ New Section</button>}
             </div>
-
             {showAddSection && (
               <div className="mt-4 p-4 rounded-xl bg-white/5 border border-white/10">
-                <input 
-                  autoFocus
-                  className="w-full bg-transparent border-none text-sm p-0 mb-3 focus:ring-0 outline-none" 
-                  placeholder="e.g. Database Setup"
-                  value={newSectionTitle}
-                  onChange={(e) => setNewSectionTitle(e.target.value)}
-                />
-                <div className="flex gap-2">
-                  <button onClick={handleAddSection} className="flex-1 bg-blue-600 text-[10px] font-bold py-2 rounded-lg">Add</button>
-                  <button onClick={() => setShowAddSection(false)} className="px-3 bg-white/5 rounded-lg"><X size={14}/></button>
-                </div>
+                <input className="w-full bg-transparent border-none text-sm p-0 mb-3 outline-none" placeholder="Section Name..." value={newSectionTitle} onChange={(e) => setNewSectionTitle(e.target.value)} />
+                <button onClick={handleAddSection} className="w-full bg-blue-600 text-[10px] font-bold py-2 rounded-lg">Add</button>
               </div>
             )}
           </div>
         </aside>
 
-        {/* WORKSPACE: Multi-Upload Area */}
+        {/* WORKSPACE */}
         <main className="flex-1 bg-[#0E131F] p-12 overflow-y-auto">
           {!activeSectionId ? (
             <div className="h-full flex flex-col items-center justify-center text-slate-600">
-               <Film size={64} className="mb-4 opacity-20"/>
-               <p className="font-medium">Select a section to begin uploading lectures</p>
+               <Film size={64} className="mb-4 opacity-10"/>
+               <p>Select a section to begin uploading</p>
             </div>
           ) : (
-            <div className="max-w-3xl mx-auto">
-              <div className="mb-10">
-                <h2 className="text-3xl font-black mb-2">Upload Content</h2>
-                <p className="text-slate-500 flex items-center gap-2">
-                  Current Section: <span className="text-blue-500 font-bold bg-blue-500/10 px-3 py-1 rounded-full text-xs">{activeSection?.title}</span>
-                </p>
+            <div className="max-w-3xl mx-auto space-y-8">
+              <div>
+                <h2 className="text-3xl font-black italic">Upload Lecture</h2>
+                <p className="text-slate-500 text-sm">Target: <span className="text-blue-500">{activeSection?.title}</span></p>
               </div>
 
-              <div className="space-y-6">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Lecture Title</label>
-                  <input 
-                    className="w-full bg-white/5 border border-white/5 rounded-2xl px-6 py-4 text-lg focus:outline-none focus:border-blue-500/50 transition-all"
-                    placeholder={`Lecture ${(activeSection?.lectures?.length || 0) + 1} Title...`}
-                    value={lectureTitle}
-                    onChange={(e) => setLectureTitle(e.target.value)}
-                  />
-                </div>
+              <input 
+                className="w-full bg-transparent border-b border-white/10 py-4 text-xl outline-none focus:border-blue-500"
+                placeholder="Lecture Title..."
+                value={lectureTitle}
+                onChange={(e) => setLectureTitle(e.target.value)}
+              />
 
-                <div 
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`aspect-video rounded-[2rem] border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all ${videoFile ? 'border-green-500/50 bg-green-500/5' : 'border-white/5 hover:border-blue-500/30 hover:bg-blue-500/5'}`}
-                >
-                  <input type="file" ref={fileInputRef} className="hidden" accept="video/*" onChange={(e) => setVideoFile(e.target.files?.[0] || null)}/>
-                  {videoFile ? (
-                    <div className="text-center animate-in fade-in zoom-in duration-300">
-                      <div className="bg-green-500/20 p-4 rounded-full w-fit mx-auto mb-4 text-green-500"><CheckCircle2 size={32}/></div>
-                      <p className="font-bold text-lg">{videoFile.name}</p>
-                      <p className="text-xs text-slate-500">Ready to sync • {(videoFile.size / 1048576).toFixed(2)} MB</p>
-                    </div>
-                  ) : (
-                    <div className="text-center text-slate-500">
-                      <div className="bg-white/5 p-4 rounded-full w-fit mx-auto mb-4"><CloudUpload size={32}/></div>
-                      <p className="font-bold text-white">Click to select video</p>
-                      <p className="text-xs">Max 70MB per lecture</p>
-                    </div>
+              <div 
+                onClick={() => fileInputRef.current?.click()}
+                className={`aspect-video rounded-[2rem] border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all ${videoFile ? 'border-green-500/50 bg-green-500/5' : 'border-white/5 hover:border-blue-500/30'}`}
+              >
+                <input type="file" ref={fileInputRef} className="hidden" accept="video/*" onChange={(e) => setVideoFile(e.target.files?.[0] || null)}/>
+                {videoFile ? (
+                  <div className="text-center">
+                    <CheckCircle2 size={48} className="text-green-500 mx-auto mb-4"/>
+                    <p className="font-bold">{videoFile.name}</p>
+                    <p className="text-xs text-slate-500">{(videoFile.size / 1048576).toFixed(2)} MB</p>
+                  </div>
+                ) : (
+                  <div className="text-center text-slate-500">
+                    <CloudUpload size={48} className="mx-auto mb-4"/>
+                    <p className="font-bold text-white">Select Video</p>
+                  </div>
+                )}
+              </div>
+
+              {/* REAL-TIME PROGRESS AREA */}
+              <div className="space-y-4">
+                <AnimatePresence>
+                  {isUploading && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }} 
+                      animate={{ opacity: 1, y: 0 }} 
+                      exit={{ opacity: 0 }}
+                      className="bg-white/5 p-6 rounded-3xl border border-white/10"
+                    >
+                      <div className="flex justify-between items-end mb-4">
+                        <div>
+                          <p className="text-[10px] font-black uppercase text-blue-500 tracking-[0.2em] mb-1">Live Upload</p>
+                          <h4 className="text-sm font-bold">Syncing content with server...</h4>
+                        </div>
+                        <span className="text-2xl font-black text-white">{uploadProgress}%</span>
+                      </div>
+                      
+                      <div className="h-3 w-full bg-white/5 rounded-full overflow-hidden">
+                        <motion.div 
+                          className="h-full bg-blue-600 shadow-[0_0_20px_rgba(37,99,235,0.5)]"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${uploadProgress}%` }}
+                          transition={{ type: "spring", bounce: 0, duration: 0.4 }}
+                        />
+                      </div>
+                      
+                      <p className="mt-4 text-[10px] text-slate-500 italic text-center">
+                        Do not close this window until the process finish
+                      </p>
+                    </motion.div>
                   )}
-                </div>
+                </AnimatePresence>
 
                 <div className="flex justify-end">
                   <button 
                     disabled={!videoFile || isUploading}
                     onClick={handleLectureUpload}
-                    className="px-10 py-4 bg-blue-600 rounded-2xl font-bold flex items-center gap-3 disabled:opacity-50 disabled:grayscale transition-all hover:scale-105 active:scale-95"
+                    className="px-12 py-4 bg-blue-600 rounded-2xl font-black uppercase tracking-tighter hover:scale-105 transition-all disabled:opacity-50 disabled:scale-100"
                   >
-                    {isUploading ? <Loader2 className="animate-spin" size={20}/> : <Plus size={20}/>}
-                    {isUploading ? "Uploading to Cloud..." : "Add Lecture to Section"}
+                    {isUploading ? <Loader2 className="animate-spin" /> : "Upload Lecture"}
                   </button>
                 </div>
+              </div>
 
-                {/* RECENT UPLOADS IN THIS SECTION */}
-                <div className="mt-16 pt-8 border-t border-white/5">
-                  <h4 className="text-sm font-bold text-slate-400 mb-6 flex items-center gap-2">
-                     Curriculum Sequence <span className="bg-white/5 px-2 py-0.5 rounded text-[10px]">{activeSection?.lectures?.length} items</span>
-                  </h4>
-                  <div className="space-y-3">
-                    {activeSection?.lectures.map((lec) => (
-                      <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} key={lec.id} className="flex items-center justify-between p-4 rounded-2xl bg-[#151B28] border border-white/5">
-                        <div className="flex items-center gap-4">
-                          <div className="size-10 rounded-xl bg-blue-600 flex items-center justify-center font-black text-xs shadow-lg shadow-blue-600/20">
-                            {lec.order}
-                          </div>
-                          <span className="text-sm font-bold">{lec.title}</span>
-                        </div>
-                        <CheckCircle2 size={18} className="text-green-500/50" />
-                      </motion.div>
-                    ))}
-                  </div>
+              {/* RECENT UPLOADS */}
+              <div className="pt-12 border-t border-white/5">
+                <h4 className="text-xs font-black uppercase text-slate-500 mb-6 tracking-widest">Section Sequence</h4>
+                <div className="space-y-3">
+                  {activeSection?.lectures.map((lec) => (
+                    <div key={lec.id} className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/5">
+                      <div className="flex items-center gap-4">
+                        <span className="size-8 rounded-lg bg-blue-600 flex items-center justify-center text-[10px] font-black">{lec.order}</span>
+                        <span className="text-sm font-bold">{lec.title}</span>
+                      </div>
+                      <CheckCircle2 size={16} className="text-green-500/40" />
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>

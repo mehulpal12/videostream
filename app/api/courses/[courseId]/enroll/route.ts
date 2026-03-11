@@ -1,30 +1,67 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
-import { auth } from "@clerk/nextjs/server"; // Assuming you use Clerk as per your schema
 
 export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ courseId: string }> }
+  req: Request,
+  { params }: { params: Promise<{ courseId: string }> } 
 ) {
   try {
-    const { userId: clerkId } = await auth();
     const { courseId } = await params;
+    const { userId: clerkId } = await auth();
+    const clerkUser = await currentUser();
 
-    if (!clerkId) {
+    if (!clerkId || !clerkUser) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // 1. Find the internal DB user ID using the Clerk ID
-    const user = await prisma.user.findUnique({
-      where: { clerkId },
+    const email = clerkUser.emailAddresses[0].emailAddress;
+
+    // 1. SYSTEMATIC SYNC: Find by clerkId OR email to avoid P2002
+    let user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { clerkId: clerkId },
+          { email: email }
+        ]
+      }
     });
 
     if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      // Create new user if neither exists
+      user = await prisma.user.create({
+        data: {
+          clerkId,
+          email,
+          username: clerkUser.username || clerkUser.firstName || "User",
+          firstName: clerkUser.firstName,
+          lastName: clerkUser.lastName,
+          imageUrl: clerkUser.imageUrl,
+        }
+      });
+    } else if (user.clerkId !== clerkId) {
+      // Update existing email record with new clerkId if they don't match
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { clerkId: clerkId }
+      });
     }
 
-    // 2. Create the enrollment
-    // Prisma will throw an error if this combination already exists due to @@unique
+    // 2. CHECK ENROLLMENT: Use the found user.id
+    const existingEnrollment = await prisma.enrollment.findUnique({
+      where: {
+        userId_courseId: {
+          userId: user.id,
+          courseId: courseId,
+        },
+      },
+    });
+
+    if (existingEnrollment) {
+      return NextResponse.json({ message: "Already enrolled" }, { status: 200 });
+    }
+
+    // 3. CREATE ENROLLMENT
     const enrollment = await prisma.enrollment.create({
       data: {
         userId: user.id,
@@ -33,11 +70,12 @@ export async function POST(
     });
 
     return NextResponse.json(enrollment, { status: 201 });
+
   } catch (error: any) {
-    // Handle unique constraint violation (User already enrolled)
-    if (error.code === 'P2002') {
-      return NextResponse.json({ error: "Already enrolled" }, { status: 400 });
-    }
-    return NextResponse.json({ error: "Enrollment failed" }, { status: 500 });
+    console.error("ENROLLMENT_SYSTEM_ERROR:", error);
+    return NextResponse.json(
+      { error: "Database Sync Error", details: error.code === 'P2002' ? "Email conflict" : error.message },
+      { status: 500 }
+    );
   }
 }

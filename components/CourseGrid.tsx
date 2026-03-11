@@ -30,10 +30,11 @@ export default function CourseGrid({
   const [priceFilter, setPriceFilter] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState('Most Relevant');
 
+  // --- REFINED FILTERING & SORTING LOGIC ---
   const filteredAndSorted = useMemo(() => {
     let result = [...initialCourses];
 
-    // Search filter (from query param)
+    // 1. Search filter
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(c => 
@@ -43,14 +44,14 @@ export default function CourseGrid({
       );
     }
 
-    // Price filter
+    // 2. Price filter (Fixed logic)
     if (priceFilter === 'Free') {
       result = result.filter(c => c.price === 0);
     } else if (priceFilter === 'Paid') {
       result = result.filter(c => c.price > 0);
     }
 
-    // Sort
+    // 3. Sort (Fixed cases)
     switch (sortBy) {
       case 'Newest':
         result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -62,12 +63,14 @@ export default function CourseGrid({
         result.sort((a, b) => b.price - a.price);
         break;
       default:
+        // Most Relevant: Keep original order or sort by date
         break;
     }
 
     return result;
   }, [initialCourses, searchQuery, priceFilter, sortBy]);
 
+  // Handle Radio Toggle (Allow unchecking)
   const handlePriceFilter = (type: string) => {
     setPriceFilter(prev => prev === type ? null : type);
   };
@@ -82,7 +85,6 @@ export default function CourseGrid({
             <Filter size={14} /> Filters
           </h3>
           <div className="space-y-8">
-            {/* Price Range Filter */}
             <div className="space-y-4">
               <h4 className="text-sm font-bold text-foreground">Price Range</h4>
               <div className="space-y-3">
@@ -91,17 +93,20 @@ export default function CourseGrid({
                     <input 
                       type="radio" 
                       name="price"
+                      // Changed: use checked to reflect state correctly
                       checked={priceFilter === item}
                       onChange={() => handlePriceFilter(item)}
-                      className="rounded border-border bg-transparent text-primary focus:ring-primary" 
+                      className="rounded-full border-border bg-transparent text-primary focus:ring-primary w-4 h-4" 
                     /> 
-                    <span className="group-hover:translate-x-1 transition-transform">{item}</span>
+                    <span className={`transition-transform ${priceFilter === item ? 'text-primary font-bold translate-x-1' : 'group-hover:translate-x-1'}`}>
+                      {item}
+                    </span>
                   </label>
                 ))}
                 {priceFilter && (
                   <button 
                     onClick={() => setPriceFilter(null)}
-                    className="text-xs text-primary hover:underline mt-1"
+                    className="text-[10px] font-black uppercase tracking-widest text-primary hover:underline mt-2"
                   >
                     Clear filter
                   </button>
@@ -131,10 +136,10 @@ export default function CourseGrid({
             <select 
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="bg-transparent text-sm font-bold focus:outline-none cursor-pointer text-primary border-none outline-none"
+              className="bg-transparent text-sm font-bold focus:outline-none cursor-pointer text-primary border-none outline-none appearance-none"
             >
               {SORT_OPTIONS.map(opt => (
-                <option key={opt} className="bg-background">{opt}</option>
+                <option key={opt} value={opt} className="bg-background text-foreground">{opt}</option>
               ))}
             </select>
           </div>
@@ -145,9 +150,18 @@ export default function CourseGrid({
             <ItemCard key={course.id} course={course} />
           ))}
           
+          {/* No results state */}
           {filteredAndSorted.length === 0 && (
-            <div className="col-span-full py-20 text-center text-muted-foreground italic">
-              {searchQuery ? `No courses found matching "${searchQuery}".` : 'No courses found in the database.'}
+            <div className="col-span-full py-20 flex flex-col items-center justify-center text-center space-y-4">
+              <div className="bg-muted p-4 rounded-full">
+                <Filter className="text-muted-foreground" size={32} />
+              </div>
+              <p className="text-muted-foreground font-medium italic">
+                {searchQuery ? `No courses found matching "${searchQuery}".` : 'No courses match your selected filters.'}
+              </p>
+              <Button variant="outline" size="sm" onClick={() => {setPriceFilter(null); setSortBy('Most Relevant');}}>
+                Reset All Filters
+              </Button>
             </div>
           )}
         </div>
@@ -156,7 +170,7 @@ export default function CourseGrid({
   );
 }
 
-// --- SUB-COMPONENTS ---
+// --- SUB-COMPONENTS (Kept as per your original code) ---
 
 const MentorCard = ({ name, role }: { name: string; role: string }) => (
   <Card className="bg-primary/5 border-primary/20 rounded-2xl p-6 text-center group shadow-none">
@@ -213,7 +227,7 @@ const ItemCard = ({ course }: { course: Course }) => (
             <Star className="w-3 h-3 fill-yellow-500" /> 4.9
           </div>
           <span className="font-bold text-foreground">
-            ${course.price.toFixed(2)}
+            {course.price === 0 ? "Free" : `₹${course.price.toLocaleString()}`}
           </span>
         </div>
       </div>
