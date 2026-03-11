@@ -3,12 +3,14 @@ import Link from 'next/link'
 import React from 'react'
 import { Button } from "@/components/ui/button"
 import { prisma } from "@/lib/prisma"
+import { Prisma } from "@/lib/generated/prisma/client"
 
 const TrendingNow = async () => {
+  const sortOrder: Prisma.SortOrder = 'desc';
   const trendingCourses = await prisma.course.findMany({
     take: 3,
     orderBy: {
-      createdAt: 'desc'
+      createdAt: sortOrder
     }
   });
 
@@ -30,7 +32,7 @@ const TrendingNow = async () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {trendingCourses.map((course) => (
             <Link 
-              href="/courses"
+              href={`/courses/${course.id}`}
               key={course.id} 
               className="group bg-card border border-border rounded-2xl overflow-hidden hover:border-primary/50 hover:shadow-xl hover:shadow-primary/5 transition-all cursor-pointer flex flex-col"
             >

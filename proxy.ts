@@ -17,6 +17,9 @@ export default clerkMiddleware(async (auth, req) => {
     const url = new URL('/', req.url)
     return NextResponse.redirect(url)
   }
+  if (req.nextUrl.pathname.startsWith('/api/upload/lecture')) {
+    return; // Allow the request
+  }
 })
 
 export const config = {

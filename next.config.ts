@@ -5,6 +5,9 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["hypercorrect-ying-aplastic.ngrok-free.dev"],
    experimental: {
     proxyClientMaxBodySize: '70mb',
+     serverActions: {
+      bodySizeLimit: '70mb',
+    },
   },
 };
 

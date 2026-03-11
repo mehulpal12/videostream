@@ -13,47 +13,40 @@ interface CloudinaryUploadResult {
     public_id: string;
     bytes: number;
     duration?: number;
-    secure_url: string; // Added this to fix Prisma 'url' requirement
+    secure_url: string;
     [key: string]: unknown;
 }
 
 export async function POST(request: NextRequest) {
     try {
-        // 1. Config Check
         if (!process.env.CLOUDINARY_API_SECRET) {
             return NextResponse.json({ error: "Cloudinary credentials not found" }, { status: 500 });
-        }
-
-        // 2. Content-Type Check (Prevents the "Failed to parse body" crash)
-        const contentType = request.headers.get("content-type") || "";
-        if (!contentType.includes("multipart/form-data")) {
-            return NextResponse.json({ error: "Invalid Content-Type. Use form-data." }, { status: 400 });
         }
 
         const formData = await request.formData();
         const file = formData.get("file") as File | null;
         const title = formData.get("title") as string | null;
-        const description = formData.get("description") as string | null;
-        const originalSize = formData.get("originalSize") as string | null;
+        
+        // --- NEW FIELDS REQUIRED BY YOUR SCHEMA ---
+        const sectionId = formData.get("sectionId") as string | null;
+        const order = parseInt(formData.get("order") as string || "0");
+        const isPreview = formData.get("isPreview") === "true";
 
-        if (!file) {
-            return NextResponse.json({ error: "File not found" }, { status: 400 });
+        if (!file || !sectionId) {
+            return NextResponse.json({ error: "File or Section ID missing" }, { status: 400 });
         }
 
-        // 3. Process Buffer
+        // 1. Process Buffer
         const bytes = await file.arrayBuffer();
         const buffer = Buffer.from(bytes);
 
-        // 4. Upload to Cloudinary with Promise
+        // 2. Upload to Cloudinary
         const result = await new Promise<CloudinaryUploadResult>((resolve, reject) => {
             const uploadStream = cloudinary.uploader.upload_stream(
                 {
                     resource_type: "video",
-                    folder: "videoStream-video",
-                    transformation: [
-                        { quality: "auto" },
-                        { fetch_format: "mp4" } // mp4 is safer for general video playback
-                    ]
+                    folder: "videoStream-lectures",
+                    transformation: [{ quality: "auto" }, { fetch_format: "mp4" }]
                 },
                 (error, result) => {
                     if (error) reject(error);
@@ -63,27 +56,23 @@ export async function POST(request: NextRequest) {
             uploadStream.end(buffer);
         });
 
-        // 5. Save to Prisma (Ensuring all required fields like 'url' are present)
-        const video = await prisma.video.create({
+        // 3. Save to Prisma (Using the 'Lecture' model from your new schema)
+        const lecture = await prisma.lecture.create({
             data: {
-                title: title || "Untitled",
-                description: description || "",
+                title: title || "Untitled Lecture",
+                videoUrl: result.secure_url, // Your schema needs 'videoUrl'
                 publicId: result.public_id,
-                id: result.public_id,
                 duration: result.duration || 0,
-                originalSize: originalSize || String(file.size), // Fallback to actual file size
-                compressedSize: String(result.bytes)
+                order: order,                // Position in the chapter
+                isPreview: isPreview,        // Can students see this for free?
+                sectionId: sectionId,        // The link to the Chapter
             }
         });
 
-        return NextResponse.json(video, { status: 200 });
+        return NextResponse.json(lecture, { status: 200 });
 
     } catch (error) {
-        console.error("Upload video failed:", error);
-        const message = error instanceof Error ? error.message : "Unknown error";
-        return NextResponse.json(
-            { error: "Upload failed", details: message }, 
-            { status: 500 }
-        );
+        console.error("Upload failed:", error);
+        return NextResponse.json({ error: "Upload failed" }, { status: 500 });
     }
 }

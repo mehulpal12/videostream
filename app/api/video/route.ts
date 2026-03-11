@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/lib/generated/prisma/client";
 
 export async function GET(req: NextRequest) {
   try {
-    const videos = await prisma.video.findMany({
-      orderBy: { createdAt: "desc" },
+    const sortOrder: Prisma.SortOrder = 'desc';
+    const videos = await prisma.lecture.findMany({
+      orderBy: { createdAt: sortOrder },
     });
     return NextResponse.json(videos);
   } catch (error) {
@@ -13,5 +15,5 @@ export async function GET(req: NextRequest) {
       { error: "Failed to fetch videos" },
       { status: 500 }
     );
-  }
+  } 
 }

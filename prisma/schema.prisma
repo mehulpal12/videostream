@@ -1,11 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../lib/generated/prisma"
 }
 
@@ -13,73 +7,99 @@ datasource db {
   provider = "postgresql"
 }
 
-
 model User {
-  id        String   @id @default(cuid())
-  clerkId   String   @unique
-  email     String   @unique
-  username  String?  @unique
+  id            String    @id @default(cuid())
+  clerkId       String    @unique
+  email         String    @unique
+  username      String?   @unique
+  firstName     String?
+  lastName      String?
+  imageUrl      String?
+  role          String    @default("STUDENT") // Added to distinguish teachers
 
-  firstName String?
-  lastName  String?
-  imageUrl  String?
-  hasImage  Boolean  @default(false)
+  // Relations
+  enrollments   Enrollment[]
+  progress      UserProgress[]
 
-  banned    Boolean  @default(false)
-  locked    Boolean  @default(false)
-  
-  publicMetadata Json @default("{}")
-  unsafeMetadata Json @default("{}")
-
-  lastActiveAt DateTime?
-  lastSignInAt DateTime?
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([clerkId])
   @@index([email])
 }
 
 model Course {
-  id          String         @id @default(cuid())
+  id          String   @id @default(cuid())
   title       String
   mentor      String
+  description String?  @db.Text
   price       Float
   badge       String?
-  color       String         @default("bg-blue-600")
-  
-  // We keep the relation to Course because progress must belong to a valid course
-  userProgress UserProgress[]
-  
-  createdAt   DateTime       @default(now())
+  color       String   @default("bg-blue-600")
+  isPublished Boolean  @default(false)
+
+  // Systematic Hierarchy
+  sections    Section[]
+  enrollments Enrollment[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
-model UserProgress {
+model Section {
   id        String   @id @default(cuid())
-  
-  // Just a string ID from Clerk. No @relation or database-level link to the User table.
-  userId    String   
+  title     String
+  order     Int      // To keep sections systematic (1, 2, 3...)
   
   courseId  String
   course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  lectures  Lecture[]
 
-  progress  Int      @default(0)
+  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
 
-  // We still want this to prevent duplicate progress entries for the same person
+model Lecture {
+  id             String   @id @default(cuid())
+  title          String
+  videoUrl       String   // Cloudinary URL
+  publicId       String   // Cloudinary ID for management
+  duration       Float
+  order          Int      // Position within the section
+  isPreview      Boolean  @default(false)
+
+  sectionId      String
+  section        Section  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  
+  userProgress   UserProgress[]
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Enrollment {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
   @@unique([userId, courseId])
 }
 
+model UserProgress {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  lectureId   String
+  lecture     Lecture  @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  
+  isCompleted Boolean  @default(false)
 
-model Video {
-    id             String   @id @default(cuid())
-    title          String
-    description    String?
-    publicId       String
-    originalSize   String?
-    compressedSize String
-    duration       Float
-    createdAt      DateTime @default(now())
-    updatedAt      DateTime @updatedAt
-}
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@unique([userId, lectureId])
+} 

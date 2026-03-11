@@ -178,7 +178,7 @@ const MentorCard = ({ name, role }: { name: string; role: string }) => (
 );
 
 const ItemCard = ({ course }: { course: Course }) => (
-  <Link href="/courses">
+  <Link href={`/courses/${course.id}`}>
     <Card className="bg-card text-card-foreground border-border rounded-xl overflow-hidden hover:border-primary/50 hover:-translate-y-1 transition-all duration-300 group shadow-sm hover:shadow-xl hover:shadow-primary/5 cursor-pointer">
       <div className={`h-44 ${course.color || 'bg-muted'} relative overflow-hidden`}>
         <div className="absolute inset-0 bg-primary/10 group-hover:bg-transparent transition-colors" />
