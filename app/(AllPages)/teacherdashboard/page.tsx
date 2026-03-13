@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  PlayCircle, Plus, CloudUpload, Save, Eye, Loader2, 
-  CheckCircle2, Trash2, X, ChevronRight, FileVideo, Film
+  PlayCircle, Plus, CloudUpload, Save, Loader2, 
+  CheckCircle2, X, ChevronRight, FileVideo, Film, Edit3, Settings,
+  Trash2, Eye, Lock, Layout, ChevronDown, Share2
 } from 'lucide-react';
 
 interface Lecture {
@@ -25,68 +26,85 @@ interface Section {
 export default function CourseBuilder() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- COURSE STATE ---
+  // --- NAVIGATION STATE ---
+  const [view, setView] = useState<'setup' | 'editor' | 'preview'>('setup');
+
+  // --- COURSE DATA STATE ---
   const [courseId, setCourseId] = useState<string | null>(null);
-  const [courseName, setCourseName] = useState("Mastering the MERN Stack");
-  const [mentor, setMentor] = useState("Mehul Pal");
-  const [price, setPrice] = useState("4999");
+  const [courseData, setCourseData] = useState({
+    title: "",
+    mentor: "",
+    price: "",
+    description: "",
+    badge: "",
+  });
 
   // --- CURRICULUM STATE ---
   const [sections, setSections] = useState<Section[]>([]);
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   
-  // --- LECTURE UPLOAD STATE ---
-  const [lectureTitle, setLectureTitle] = useState("");
-  const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [uploadProgress, setUploadProgress] = useState(0); // Real-time %
-  
+  // --- PREVIEW SPECIFIC STATE ---
+  const [previewLecture, setPreviewLecture] = useState<Lecture | null>(null);
+  const [expandedPreviewSections, setExpandedPreviewSections] = useState<string[]>([]);
+
   // --- UI STATUS ---
-  const [isCreatingCourse, setIsCreatingCourse] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isAddingSection, setIsAddingSection] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [showAddSection, setShowAddSection] = useState(false);
   const [newSectionTitle, setNewSectionTitle] = useState("");
+  const [lectureTitle, setLectureTitle] = useState("");
+  const [videoFile, setVideoFile] = useState<File | null>(null);
 
-  // 1. Initialize the Course
-  const handleInitialSave = async () => {
-    setIsCreatingCourse(true);
-    try {
-      const res = await axios.post("/api/courses", { title: courseName, mentor, price });
-      setCourseId(res.data.id);
-      if (res.data.sections) setSections(res.data.sections);
-    } catch (error) {
-       alert("Error synchronizing course");
-    } finally {
-      setIsCreatingCourse(false);
+  // Auto-set first lecture when entering preview
+  useEffect(() => {
+    if (view === 'preview' && sections.length > 0) {
+      const firstLec = sections[0].lectures[0];
+      if (firstLec) setPreviewLecture(firstLec);
+      setExpandedPreviewSections([sections[0].id]);
     }
+  }, [view, sections]);
+
+  const handleSaveCourseDetails = async () => {
+    if (!courseData.title || !courseData.mentor) return alert("Required fields missing.");
+    setIsSyncing(true);
+    try {
+      const res = await axios.post("/api/courses", courseData);
+      const data = res.data;
+      setCourseId(data.id);
+      setSections(data.sections || []);
+      setCourseData({
+        title: data.title, mentor: data.mentor, price: data.price.toString(),
+        description: data.description || "", badge: data.badge || "",
+      });
+      setView('editor');
+    } catch (error) {
+      alert("Sync failed.");
+    } finally { setIsSyncing(false); }
   };
 
-  // 2. Add New Section
   const handleAddSection = async () => {
     if (!courseId || !newSectionTitle.trim()) return;
+    setIsAddingSection(true);
     try {
       const res = await axios.post(`/api/courses/${courseId}/sections`, {
-        title: newSectionTitle,
-        order: sections.length + 1
+        title: newSectionTitle, order: sections.length + 1
       });
-      setSections([...sections, { ...res.data, lectures: [] }]);
+      setSections(prev => [...prev, { ...res.data, lectures: [] }]);
       setActiveSectionId(res.data.id);
       setNewSectionTitle("");
       setShowAddSection(false);
-    } catch (error) {
-      alert("Failed to add section");
-    }
+    } catch (error) { alert("Add section failed."); }
+    finally { setIsAddingSection(false); }
   };
 
-  // 3. Real-Time Multi-Lecture Upload
   const handleLectureUpload = async () => {
     if (!videoFile || !activeSectionId) return;
-
     setIsUploading(true);
-    setUploadProgress(0); // Start at 0
-
-    const currentSection = sections.find((s) => s.id === activeSectionId);
-    const nextOrder = (currentSection?.lectures?.length || 0) + 1;
-
+    setUploadProgress(0);
+    const activeSection = sections.find(s => s.id === activeSectionId);
+    const nextOrder = (activeSection?.lectures?.length || 0) + 1;
     const formData = new FormData();
     formData.append("file", videoFile);
     formData.append("title", lectureTitle || `Lecture ${nextOrder}`);
@@ -94,211 +112,215 @@ export default function CourseBuilder() {
     formData.append("order", nextOrder.toString());
 
     try {
-      // THE REAL-TIME MAGIC: Axios onUploadProgress
       const res = await axios.post("/api/upload/lecture", formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const percentCompleted = Math.round(
-              (progressEvent.loaded * 100) / progressEvent.total
-            );
-            setUploadProgress(percentCompleted);
-          }
-        },
+        onUploadProgress: (e) => e.total && setUploadProgress(Math.round((e.loaded * 100) / e.total)),
       });
-
-      if (res.status === 201 || res.status === 200) {
-        setSections((prev) =>
-          prev.map((s) =>
-            s.id === activeSectionId
-              ? { ...s, lectures: [...(s.lectures || []), res.data].sort((a, b) => a.order - b.order) }
-              : s
-          )
-        );
-
-        // Reset
-        setVideoFile(null);
-        setLectureTitle("");
-        if (fileInputRef.current) fileInputRef.current.value = "";
-      }
-    } catch (error: any) {
-      alert(error.response?.data?.error || "Upload failed");
-    } finally {
-      setIsUploading(false);
-      // Delay resetting progress slightly for visual satisfaction
-      setTimeout(() => setUploadProgress(0), 10000);
-    }
+      setSections(prev => prev.map(s => s.id === activeSectionId ? { ...s, lectures: [...s.lectures, res.data].sort((a, b) => a.order - b.order) } : s));
+      setVideoFile(null); setLectureTitle("");
+    } catch (error) { alert("Upload failed"); }
+    finally { setIsUploading(false); }
   };
 
-  const activeSection = sections.find(s => s.id === activeSectionId);
+  const currentActiveSection = sections.find(s => s.id === activeSectionId);
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#0B0F17] text-slate-100 font-sans">
-      {/* HEADER */}
-      <header className="sticky top-0 z-50 flex items-center justify-between px-8 py-4 bg-[#0B0F17]/90 backdrop-blur-xl border-b border-white/5">
-        <div className="flex items-center gap-4">
-          <div className="bg-blue-600 p-2 rounded-lg"><PlayCircle size={20} /></div>
-          <div>
-            <input 
-              className="bg-transparent border-none text-lg font-bold focus:ring-0 w-64 p-0 outline-none" 
-              value={courseName}
-              onChange={(e) => setCourseName(e.target.value)}
-            />
-            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Builder Mode</p>
+    <div className="flex flex-col h-screen bg-[#0B0F17] text-slate-100 overflow-hidden font-sans">
+      
+      {/* --- SYSTEM HEADER --- */}
+      <header className="h-20 flex items-center justify-between px-8 bg-[#0B0F17]/80 backdrop-blur-xl border-b border-white/5 shrink-0">
+        <div className="flex items-center gap-8">
+          <div className="flex items-center gap-3">
+            <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-600/20"><PlayCircle size={22} /></div>
+            <h1 className="text-lg font-black tracking-tighter uppercase italic">LMS.Engine</h1>
           </div>
+          
+          <nav className="flex bg-white/5 p-1 rounded-2xl border border-white/5">
+            {[
+              { id: 'setup', icon: Settings, label: '1. Setup' },
+              { id: 'editor', icon: Edit3, label: '2. Editor' },
+              { id: 'preview', icon: Eye, label: '3. Preview' }
+            ].map((tab) => (
+              <button 
+                key={tab.id}
+                disabled={!courseId && tab.id !== 'setup'}
+                onClick={() => setView(tab.id as any)}
+                className={`flex items-center gap-2 px-6 py-2 rounded-xl text-xs font-bold transition-all ${view === tab.id ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-300 disabled:opacity-20'}`}
+              >
+                <tab.icon size={14}/> {tab.label}
+              </button>
+            ))}
+          </nav>
         </div>
-        
-        {!courseId ? (
-          <button onClick={handleInitialSave} className="bg-blue-600 px-6 py-2 rounded-xl font-bold text-sm">Initialize Course</button>
-        ) : (
-          <div className="flex items-center gap-2 text-green-400 text-xs font-bold bg-green-400/10 px-4 py-2 rounded-full">
-            <CheckCircle2 size={14} /> System Active
-          </div>
-        )}
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* SIDEBAR */}
-        <aside className="w-80 border-r border-white/5 bg-[#0B0F17] flex flex-col">
-          <div className="p-6 flex-1 overflow-y-auto">
-            <h3 className="text-xs font-black uppercase text-slate-500 mb-6">Curriculum</h3>
-            <div className="space-y-4">
-              {sections.map((section) => (
-                <div key={section.id}>
-                  <div 
-                    onClick={() => setActiveSectionId(section.id)}
-                    className={`p-3 rounded-xl border cursor-pointer flex items-center justify-between ${activeSectionId === section.id ? 'border-blue-500 bg-blue-500/10' : 'border-white/5'}`}
-                  >
-                    <span className="text-xs font-bold">Section {section.order}: {section.title}</span>
-                    <ChevronRight size={14} className={activeSectionId === section.id ? 'rotate-90 text-blue-500' : ''}/>
-                  </div>
-                  {activeSectionId === section.id && (
-                    <div className="pl-4 mt-2 space-y-1 border-l-2 border-white/5 ml-2">
-                      {section.lectures.map((lec) => (
-                        <div key={lec.id} className="text-[10px] text-slate-400 py-1 flex items-center gap-2">
-                          <FileVideo size={10}/> {lec.order}. {lec.title}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+        
+        {/* --- VIEW 1: COURSE SETUP --- */}
+        {view === 'setup' && (
+          <main className="flex-1 overflow-y-auto p-12 bg-[#0E131F]">
+            <div className="max-w-3xl mx-auto space-y-12">
+              <h2 className="text-4xl font-black tracking-tight">General Settings</h2>
+              <div className="grid grid-cols-2 gap-8 bg-white/[0.02] p-8 rounded-[2.5rem] border border-white/5">
+                <div className="col-span-2 space-y-2">
+                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Course Title</label>
+                  <input className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-xl font-bold outline-none focus:border-blue-500 transition-all" value={courseData.title} onChange={(e) => setCourseData({...courseData, title: e.target.value})} />
                 </div>
-              ))}
-              {courseId && <button onClick={() => setShowAddSection(true)} className="w-full py-2 border border-dashed border-white/10 rounded-xl text-xs text-slate-500 hover:text-white transition-all">+ New Section</button>}
-            </div>
-            {showAddSection && (
-              <div className="mt-4 p-4 rounded-xl bg-white/5 border border-white/10">
-                <input className="w-full bg-transparent border-none text-sm p-0 mb-3 outline-none" placeholder="Section Name..." value={newSectionTitle} onChange={(e) => setNewSectionTitle(e.target.value)} />
-                <button onClick={handleAddSection} className="w-full bg-blue-600 text-[10px] font-bold py-2 rounded-lg">Add</button>
+                <div className="space-y-2"><label className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Mentor</label><input className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-blue-500" value={courseData.mentor} onChange={(e) => setCourseData({...courseData, mentor: e.target.value})} /></div>
+                <div className="space-y-2"><label className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Price (INR)</label><input className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-blue-500" type="number" value={courseData.price} onChange={(e) => setCourseData({...courseData, price: e.target.value})} /></div>
+                <div className="col-span-2 space-y-2"><label className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Description</label><textarea className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-blue-500 min-h-[120px] resize-none" value={courseData.description} onChange={(e) => setCourseData({...courseData, description: e.target.value})} /></div>
               </div>
-            )}
-          </div>
-        </aside>
-
-        {/* WORKSPACE */}
-        <main className="flex-1 bg-[#0E131F] p-12 overflow-y-auto">
-          {!activeSectionId ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-600">
-               <Film size={64} className="mb-4 opacity-10"/>
-               <p>Select a section to begin uploading</p>
-            </div>
-          ) : (
-            <div className="max-w-3xl mx-auto space-y-8">
-              <div>
-                <h2 className="text-3xl font-black italic">Upload Lecture</h2>
-                <p className="text-slate-500 text-sm">Target: <span className="text-blue-500">{activeSection?.title}</span></p>
+              <div className="flex justify-end pt-4">
+                <button disabled={isSyncing} onClick={handleSaveCourseDetails} className="bg-blue-600 px-10 py-5 rounded-3xl font-black uppercase text-sm tracking-tighter flex items-center gap-3 shadow-xl shadow-blue-600/20 disabled:opacity-50">
+                  {isSyncing ? <Loader2 className="animate-spin"/> : <Save size={18}/>}
+                  {courseId ? "Save Changes" : "Create Course"}
+                </button>
               </div>
+            </div>
+          </main>
+        )}
 
-              <input 
-                className="w-full bg-transparent border-b border-white/10 py-4 text-xl outline-none focus:border-blue-500"
-                placeholder="Lecture Title..."
-                value={lectureTitle}
-                onChange={(e) => setLectureTitle(e.target.value)}
-              />
-
-              <div 
-                onClick={() => fileInputRef.current?.click()}
-                className={`aspect-video rounded-[2rem] border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all ${videoFile ? 'border-green-500/50 bg-green-500/5' : 'border-white/5 hover:border-blue-500/30'}`}
-              >
-                <input type="file" ref={fileInputRef} className="hidden" accept="video/*" onChange={(e) => setVideoFile(e.target.files?.[0] || null)}/>
-                {videoFile ? (
-                  <div className="text-center">
-                    <CheckCircle2 size={48} className="text-green-500 mx-auto mb-4"/>
-                    <p className="font-bold">{videoFile.name}</p>
-                    <p className="text-xs text-slate-500">{(videoFile.size / 1048576).toFixed(2)} MB</p>
-                  </div>
-                ) : (
-                  <div className="text-center text-slate-500">
-                    <CloudUpload size={48} className="mx-auto mb-4"/>
-                    <p className="font-bold text-white">Select Video</p>
+        {/* --- VIEW 2: CURRICULUM EDITOR --- */}
+        {view === 'editor' && (
+          <div className="flex flex-1 overflow-hidden">
+            <aside className="w-80 border-r border-white/5 bg-[#0B0F17] flex flex-col">
+              <div className="p-6 border-b border-white/5 flex items-center justify-between">
+                <h3 className="text-xs font-black uppercase text-slate-500">Curriculum</h3>
+                <button onClick={() => setShowAddSection(true)} className="size-8 flex items-center justify-center bg-blue-600/10 text-blue-500 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><Plus size={18}/></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {sections.map(section => (
+                  <button key={section.id} onClick={() => setActiveSectionId(section.id)} className={`w-full text-left p-4 rounded-2xl border transition-all ${activeSectionId === section.id ? 'border-blue-500 bg-blue-500/10' : 'border-white/5 hover:bg-white/5'}`}>
+                    <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Section {section.order}</span>
+                    <h4 className="text-xs font-bold text-slate-200 truncate">{section.title}</h4>
+                  </button>
+                ))}
+                {showAddSection && (
+                  <div className="p-4 bg-white/5 rounded-2xl border border-blue-500/30">
+                    <input autoFocus className="w-full bg-transparent border-none text-sm mb-4 outline-none font-bold" placeholder="e.g. Intro" value={newSectionTitle} onChange={(e) => setNewSectionTitle(e.target.value)} />
+                    <button disabled={isAddingSection || !newSectionTitle.trim()} onClick={handleAddSection} className="w-full bg-blue-600 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">{isAddingSection ? <Loader2 size={12} className="animate-spin mx-auto"/> : "Add"}</button>
                   </div>
                 )}
               </div>
-
-              {/* REAL-TIME PROGRESS AREA */}
-              <div className="space-y-4">
-                <AnimatePresence>
-                  {isUploading && (
-                    <motion.div 
-                      initial={{ opacity: 0, y: 10 }} 
-                      animate={{ opacity: 1, y: 0 }} 
-                      exit={{ opacity: 0 }}
-                      className="bg-white/5 p-6 rounded-3xl border border-white/10"
-                    >
-                      <div className="flex justify-between items-end mb-4">
-                        <div>
-                          <p className="text-[10px] font-black uppercase text-blue-500 tracking-[0.2em] mb-1">Live Upload</p>
-                          <h4 className="text-sm font-bold">Syncing content with server...</h4>
-                        </div>
-                        <span className="text-2xl font-black text-white">{uploadProgress}%</span>
-                      </div>
-                      
-                      <div className="h-3 w-full bg-white/5 rounded-full overflow-hidden">
-                        <motion.div 
-                          className="h-full bg-blue-600 shadow-[0_0_20px_rgba(37,99,235,0.5)]"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${uploadProgress}%` }}
-                          transition={{ type: "spring", bounce: 0, duration: 0.4 }}
-                        />
-                      </div>
-                      
-                      <p className="mt-4 text-[10px] text-slate-500 italic text-center">
-                        Do not close this window until the process finish
-                      </p>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <div className="flex justify-end">
-                  <button 
-                    disabled={!videoFile || isUploading}
-                    onClick={handleLectureUpload}
-                    className="px-12 py-4 bg-blue-600 rounded-2xl font-black uppercase tracking-tighter hover:scale-105 transition-all disabled:opacity-50 disabled:scale-100"
-                  >
-                    {isUploading ? <Loader2 className="animate-spin" /> : "Upload Lecture"}
-                  </button>
-                </div>
-              </div>
-
-              {/* RECENT UPLOADS */}
-              <div className="pt-12 border-t border-white/5">
-                <h4 className="text-xs font-black uppercase text-slate-500 mb-6 tracking-widest">Section Sequence</h4>
-                <div className="space-y-3">
-                  {activeSection?.lectures.map((lec) => (
-                    <div key={lec.id} className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/5">
-                      <div className="flex items-center gap-4">
-                        <span className="size-8 rounded-lg bg-blue-600 flex items-center justify-center text-[10px] font-black">{lec.order}</span>
-                        <span className="text-sm font-bold">{lec.title}</span>
-                      </div>
-                      <CheckCircle2 size={16} className="text-green-500/40" />
+            </aside>
+            <main className="flex-1 bg-[#0E131F] p-12 overflow-y-auto">
+              {!activeSectionId ? (
+                <div className="h-full flex flex-col items-center justify-center text-slate-700 opacity-20"><Film size={80}/><p className="mt-4 font-bold">Select a section</p></div>
+              ) : (
+                <div className="max-w-3xl mx-auto space-y-12 pb-20">
+                  <h2 className="text-3xl font-black italic tracking-tighter">Section Editor</h2>
+                  <div className="space-y-8">
+                    <input className="w-full bg-transparent border-b border-white/10 py-4 text-2xl font-bold outline-none focus:border-blue-500" placeholder="Lecture Title..." value={lectureTitle} onChange={(e) => setLectureTitle(e.target.value)} />
+                    <div onClick={() => !isUploading && fileInputRef.current?.click()} className={`aspect-video rounded-[3rem] border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all ${videoFile ? 'border-green-500 bg-green-500/5 shadow-2xl shadow-green-500/10' : 'border-white/10 hover:border-blue-500/40'}`}>
+                      <input type="file" ref={fileInputRef} className="hidden" accept="video/*" onChange={(e) => setVideoFile(e.target.files?.[0] || null)}/>
+                      {videoFile ? (<><CheckCircle2 size={56} className="text-green-500 mb-4"/><p className="text-lg font-bold">{videoFile.name}</p></>) : (<><CloudUpload size={32} className="text-slate-500 mb-4"/><p className="text-lg font-bold">Select Video</p></>)}
                     </div>
-                  ))}
+                    {isUploading && (
+                      <div className="p-8 bg-blue-600/10 rounded-[2.5rem] border border-blue-500/20">
+                        <div className="flex justify-between items-center mb-4"><p className="text-[10px] font-black uppercase text-blue-500">Uploading</p><span className="text-3xl font-black">{uploadProgress}%</span></div>
+                        <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden"><motion.div className="h-full bg-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.6)]" initial={{ width: 0 }} animate={{ width: `${uploadProgress}%` }} /></div>
+                      </div>
+                    )}
+                    <div className="flex justify-end"><button disabled={!videoFile || isUploading} onClick={handleLectureUpload} className="px-16 py-5 bg-blue-600 rounded-[2rem] font-black uppercase text-sm tracking-tighter shadow-xl shadow-blue-600/20">Upload</button></div>
+                  </div>
+                  <div className="pt-16 space-y-3">
+                    {currentActiveSection?.lectures.map(lec => (
+                      <div key={lec.id} className="flex items-center justify-between p-5 rounded-3xl bg-white/[0.02] border border-white/5 group transition-colors">
+                        <div className="flex items-center gap-5"><span className="size-10 rounded-2xl bg-white/5 flex items-center justify-center text-[10px] font-black group-hover:bg-blue-600 transition-all">{lec.order}</span><h5 className="text-sm font-bold">{lec.title}</h5></div>
+                        <button className="p-2 text-slate-600 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </main>
+          </div>
+        )}
+
+        {/* --- VIEW 3: STUDENT PREVIEW (Student Dashboard UI) --- */}
+        {view === 'preview' && (
+          <main className="flex-1 flex bg-[#0B0F17] overflow-hidden">
+            {/* MAIN PREVIEW AREA */}
+            <div className="flex-1 flex flex-col overflow-y-auto">
+              <div className="p-8 space-y-8">
+                {/* VIDEO PLAYER PREVIEW */}
+                <div className="relative aspect-video rounded-3xl overflow-hidden bg-black shadow-2xl border border-white/5">
+                  {previewLecture?.videoUrl ? (
+                    <video 
+                      key={previewLecture.id}
+                      src={previewLecture.videoUrl} 
+                      className="w-full h-full object-contain" 
+                      controls 
+                    />
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-4">
+                      <Lock size={48} className="opacity-20"/>
+                      <p className="font-bold">Select a lecture to preview video stream</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* INFO AREA */}
+                <div className="space-y-6 max-w-4xl">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h2 className="text-3xl font-black tracking-tight">{previewLecture?.title || courseData.title}</h2>
+                      <p className="text-blue-500 font-bold text-xs uppercase tracking-widest mt-2">Mentor: {courseData.mentor}</p>
+                    </div>
+                    <div className="flex gap-3">
+                      <button className="px-6 py-2 bg-white/5 rounded-xl text-xs font-bold border border-white/5 flex items-center gap-2"><Share2 size={14}/> Share</button>
+                    </div>
+                  </div>
+                  
+                  {/* TABS SIMULATION */}
+                  <div className="border-b border-white/5 flex gap-8">
+                    <button className="pb-4 border-b-2 border-blue-600 text-sm font-black uppercase tracking-widest">Overview</button>
+                    <button className="pb-4 border-b-2 border-transparent text-slate-500 text-sm font-black uppercase tracking-widest">Resources</button>
+                  </div>
+                  <p className="text-slate-400 leading-relaxed text-sm">{courseData.description || "No description provided for this course yet."}</p>
                 </div>
               </div>
             </div>
-          )}
-        </main>
+
+            {/* CURRICULUM PREVIEW SIDEBAR */}
+            <aside className="w-[380px] bg-[#0E131F] border-l border-white/5 flex flex-col">
+              <div className="p-6 border-b border-white/5 flex items-center justify-between">
+                <h3 className="font-black text-sm uppercase tracking-widest text-slate-400">Curriculum</h3>
+                <Layout size={16} className="text-slate-600"/>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                {sections.map((section) => (
+                  <div key={section.id} className="border-b border-white/5">
+                    <button 
+                      onClick={() => setExpandedPreviewSections(prev => prev.includes(section.id) ? prev.filter(i => i !== section.id) : [...prev, section.id])}
+                      className="w-full px-6 py-5 flex items-center justify-between hover:bg-white/5 transition-all"
+                    >
+                      <div className="text-left">
+                        <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-1">Module {section.order}</p>
+                        <h4 className="text-xs font-bold text-slate-200">{section.title}</h4>
+                      </div>
+                      <ChevronDown size={16} className={`text-slate-500 transition-transform ${expandedPreviewSections.includes(section.id) ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {expandedPreviewSections.includes(section.id) && (
+                      <div className="px-3 pb-4 space-y-1">
+                        {section.lectures.map((lec) => (
+                          <button 
+                            key={lec.id}
+                            onClick={() => setPreviewLecture(lec)}
+                            className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all ${previewLecture?.id === lec.id ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20' : 'hover:bg-white/5 text-slate-400'}`}
+                          >
+                            <PlayCircle size={14} className={previewLecture?.id === lec.id ? 'text-white' : 'text-blue-500'} />
+                            <span className="text-xs font-bold truncate text-left">{lec.title}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </aside>
+          </main>
+        )}
       </div>
     </div>
   );
